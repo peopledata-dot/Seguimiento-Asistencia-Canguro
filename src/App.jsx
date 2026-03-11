@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebaseConfig';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase/firestore';
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, Download, FileSpreadsheet } from 'lucide-react';
-import * as XLSX from 'xlsx'; // Librería para exportar
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const styles = {
   loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
@@ -40,7 +40,7 @@ const styles = {
     padding: '8px', borderRadius: '8px', cursor: bloqueado ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
   }),
   btnOut: { backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
-  btnExcel: { backgroundColor: '#166534', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', transition: '0.3s' },
+  btnExcel: { backgroundColor: '#166534', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
   dashGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' },
   dashCard: { backgroundColor: '#111', border: '1px solid #333', borderRadius: '20px', padding: '30px' },
 };
@@ -70,12 +70,21 @@ export default function App() {
     }
   }, [isAuthenticated]);
 
+  const regionesDisponibles = useMemo(() => 
+    [...new Set(personal.map(p => p.region))].filter(Boolean).sort()
+  , [personal]);
+
+  const tiendasDisponibles = useMemo(() => {
+    const base = filtroRegion ? personal.filter(p => p.region === filtroRegion) : personal;
+    return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
+  }, [personal, filtroRegion]);
+
   const filtrados = useMemo(() => {
     return personal.filter(p => {
       const pFecha = p.Fecha || p.fecha || p.fechaCarga || "";
-      const pMes = p.mes || ""; 
+      const pMes = (p.mes || "").toUpperCase();
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
-      const matchMes = !filtroMes || pMes.toUpperCase() === filtroMes;
+      const matchMes = !filtroMes || pMes === filtroMes;
       const matchFecha = !filtroFecha || pFecha === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
@@ -83,29 +92,34 @@ export default function App() {
     });
   }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
 
-  // FUNCIÓN PARA EXPORTAR A EXCEL
+  const statsPorEstado = useMemo(() => {
+    const estados = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
+    const total = filtrados.length || 0;
+    return estados.map(est => {
+      const cant = filtrados.filter(p => p.status === est).length;
+      return {
+        nombre: est,
+        cantidad: cant,
+        porcentaje: total > 0 ? ((cant / total) * 100).toFixed(1) : 0,
+        color: est === "ACTIVO" ? "#fbbf24" : est === "SIN ACTIVIDAD" ? "#ef4444" : "#555"
+      };
+    });
+  }, [filtrados]);
+
   const exportarExcel = () => {
     if (filtrados.length === 0) return alert("No hay datos para exportar");
-    
-    // Preparar los datos quitando el ID de Firebase y formateando
     const datosExcel = filtrados.map(p => ({
       NOMBRE: `${p.Nombre} ${p.Apellido}`,
       ID: p.ID || '---',
       SUCURSAL: p.sucursal,
       REGION: p.region,
       ESTADO: p.status,
-      FECHA: p.Fecha || p.fecha || p.fechaCarga || '---',
-      MES: p.mes || '---',
-      BLOQUEADO: p.bloqueado ? "SÍ" : "NO"
+      FECHA: p.Fecha || p.fecha || p.fechaCarga || '---'
     }));
-
     const hoja = XLSX.utils.json_to_sheet(datosExcel);
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(libro, hoja, "Auditoria");
-    
-    // Generar nombre de archivo con fecha actual
-    const nombreArchivo = `Reporte_Matriz_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(libro, nombreArchivo);
+    XLSX.writeFile(libro, `Respaldo_Matriz_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleGuardar = async (id, statusActual) => {
@@ -158,21 +172,19 @@ export default function App() {
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
             <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar Colaborador..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
-          
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
             {["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"].map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-
-          <select style={styles.input} value={filtroRegion} onChange={e=>setFiltroRegion(e.target.value)}>
+          <select style={styles.input} value={filtroRegion} onChange={e=>{setFiltroRegion(e.target.value); setFiltroTienda("");}}>
             <option value="">REGIÓN</option>
-            {[...new Set(personal.map(p => p.region))].filter(Boolean).sort().map(r=><option key={r} value={r}>{r}</option>)}
+            {regionesDisponibles.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
-
-          {/* BOTÓN DE EXCEL AÑADIDO AQUÍ */}
-          <button onClick={exportarExcel} style={styles.btnExcel}>
-            <FileSpreadsheet size={18}/> EXPORTAR REPALDO
-          </button>
+          <select style={styles.input} value={filtroTienda} onChange={e=>setFiltroTienda(e.target.value)}>
+            <option value="">SUCURSAL</option>
+            {tiendasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR</button>
         </div>
 
         {activeTab === "auditoria" ? (
@@ -183,16 +195,9 @@ export default function App() {
               <div style={styles.card}><p style={{color:'#888', fontSize:'10px', margin:0}}>FILTRADOS</p><h2 style={{fontSize:'32px', margin:'5px 0'}}>{filtrados.length}</h2></div>
               <div style={styles.card}><p style={{color:'#888', fontSize:'10px', margin:0}}>TOTAL BASE</p><h2 style={{fontSize:'32px', margin:'5px 0'}}>{personal.length}</h2></div>
             </div>
-
             <div style={{backgroundColor: '#111', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333'}}>
               <table style={styles.table}>
-                <thead>
-                  <tr style={{backgroundColor: '#1a1a1a'}}>
-                    <th style={styles.th}>COLABORADOR / SEDE</th>
-                    <th style={styles.th}>FECHA</th>
-                    <th style={{...styles.th, textAlign:'center'}}>GESTIÓN ASISTENCIA</th>
-                  </tr>
-                </thead>
+                <thead><tr style={{backgroundColor: '#1a1a1a'}}><th style={styles.th}>COLABORADOR / SEDE</th><th style={styles.th}>FECHA</th><th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th></tr></thead>
                 <tbody>
                   {loading ? (
                     <tr><td colSpan="3" style={{textAlign:'center', padding:'50px'}}><RefreshCw className="animate-spin" color="#fbbf24" /></td></tr>
@@ -200,23 +205,14 @@ export default function App() {
                     filtrados.map(p => (
                       <tr key={p.id}>
                         <td style={styles.td}>
-                          <div style={{textTransform:'uppercase', fontWeight:'bold', fontSize:'15px'}}>{p.Nombre} {p.Apellido}</div>
-                          <div style={{fontSize:'15px', color:'#fbbf24'}}>{p.sucursal} <span style={{color: '#418fc0'}}>|</span> {p.region}</div>
+                          <div style={{textTransform:'uppercase', fontWeight:'bold'}}>{p.Nombre} {p.Apellido}</div>
+                          <div style={{fontSize:'13px', color:'#fbbf24'}}>{p.sucursal} | {p.region}</div>
                         </td>
-                        <td style={styles.td}>
-                            <div style={{fontSize:'15px', color:'#666', display:'flex', alignItems:'center', gap: '5px'}}>
-                                <Calendar size={16}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}
-                            </div>
-                        </td>
+                        <td style={styles.td}><div style={{fontSize:'14px', color:'#666'}}><Calendar size={14}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}</div></td>
                         <td style={styles.td}>
                           <div style={{display:'flex', gap:'8px', justifyContent:'center'}}>
                             <select value={p.status} disabled={p.bloqueado} onChange={(e) => updateDoc(doc(db, "personal", p.id), { status: e.target.value })} style={styles.statusBadge(p.status, p.bloqueado)}>
-                              <option value="ACTIVO">ACTIVO</option>
-                              <option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option>
-                              <option value="VACACIONES">VACACIONES</option>
-                              <option value="REPOSO">REPOSO</option>
-                              <option value="EGRESO">EGRESO</option>
-                              <option value="AUSENCIA INJUSTIFICADA">AUSENCIA INJUSTIFICADA</option>
+                              <option value="ACTIVO">ACTIVO</option><option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option><option value="VACACIONES">VACACIONES</option><option value="REPOSO">REPOSO</option><option value="EGRESO">EGRESO</option><option value="AUSENCIA INJUSTIFICADA">AUSENCIA INJUSTIFICADA</option>
                             </select>
                             <button onClick={() => !p.bloqueado && handleGuardar(p.id, p.status)} style={styles.btnSave(p.bloqueado)}>
                               {p.bloqueado ? <CheckCircle size={18} /> : <Save size={18} />}
@@ -232,11 +228,33 @@ export default function App() {
           </>
         ) : (
           <div style={styles.dashGrid}>
-              {/* Contenido del Dashboard... */}
-              <div style={{...styles.dashCard, gridColumn: 'span 2'}}>
-                  <h3 style={{color: '#fbbf24'}}>MÉTRICAS ACTIVAS</h3>
-                  <p>Dashboard habilitado para {filtrados.length} registros.</p>
+            <div style={{...styles.dashCard, gridColumn: 'span 2'}}>
+              <h3 style={{color: '#fbbf24', display:'flex', alignItems:'center', gap:'10px'}}><BarChart3 size={20}/> MÉTRICAS DE CUMPLIMIENTO</h3>
+              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginTop:'20px'}}>
+                {statsPorEstado.map(est => (
+                  <div key={est.nombre} style={{backgroundColor:'#000', padding:'20px', borderRadius:'15px', border:'1px solid #222', position:'relative', overflow:'hidden'}}>
+                    <div style={{position:'absolute', bottom:0, left:0, width:`${est.porcentaje}%`, height:'4px', backgroundColor:est.color}}></div>
+                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
+                      <span style={{fontSize:'11px', color: '#888', fontWeight:'bold'}}>{est.nombre}</span>
+                      <span style={{fontSize:'18px', fontWeight:'bold', color: est.color}}>{est.porcentaje}%</span>
+                    </div>
+                    <div style={{fontSize:'32px', fontWeight:'900'}}>{est.cantidad} <span style={{fontSize:'12px', color:'#444'}}>pax</span></div>
+                  </div>
+                ))}
               </div>
+            </div>
+            <div style={{...styles.dashCard, gridColumn: 'span 2'}}>
+              <h4 style={{textAlign:'center', color:'#888', textTransform:'uppercase', fontSize:'12px'}}>Comparativo Nacional</h4>
+              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'150px', marginTop:'20px'}}>
+                {statsPorEstado.map(est => (
+                  <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
+                    <span style={{fontSize:'10px', color:est.color}}>{est.cantidad}</span>
+                    <div style={{width:'30px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0'}}></div>
+                    <span style={{fontSize:'8px', color:'#444', marginTop:'5px'}}>{est.nombre.split(" ")[0]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
