@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from './firebaseConfig';
 import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore'; 
-// Corregido: lucide-react es el nombre correcto
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet, Filter } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// Estilos (se mantienen los que ya tienes)
 const styles = {
   loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
   loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1 },
@@ -47,6 +45,8 @@ const styles = {
   dashCard: { backgroundColor: '#111', border: '1px solid #333', borderRadius: '20px', padding: '30px' },
 };
 
+const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState("auditoria");
@@ -61,8 +61,8 @@ export default function App() {
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState(""); // RESTAURADO: Filtro de Estado
 
-  // FUNCIÓN DE CARGA MANUAL (Previene agotar las 50k lecturas gratis)
   const fetchDatos = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
@@ -73,7 +73,7 @@ export default function App() {
       setPersonal(docs);
     } catch (error) {
       if (error.message.includes("quota")) {
-        alert("⚠️ ATENCIÓN: Se agotó el límite diario de Firebase. Los datos del día 11 aparecerán cuando se reinicie el contador.");
+        alert("⚠️ ATENCIÓN: Límite de Firebase agotado. Los datos se actualizarán al reiniciar el ciclo.");
       }
     } finally {
       setLoading(false);
@@ -99,6 +99,7 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
+  // Lógica de Filtrado (Afecta a Auditoría y Dashboard)
   const filtrados = useMemo(() => {
     return personal.filter(p => {
       const pFecha = p.Fecha || p.fecha || p.fechaCarga || p.FECHA || ""; 
@@ -108,14 +109,14 @@ export default function App() {
       const matchFecha = !filtroFecha || pFecha === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
-      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
+      const matchStatus = !filtroStatus || p.status === filtroStatus; // Lógica restaurada
+      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda && matchStatus;
     });
-  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
+  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda, filtroStatus]);
 
   const statsPorEstado = useMemo(() => {
-    const estados = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
     const total = filtrados.length || 0;
-    return estados.map(est => {
+    return ESTADOS_POSIBLES.map(est => {
       const cant = filtrados.filter(p => p.status === est).length;
       return {
         nombre: est,
@@ -199,27 +200,41 @@ export default function App() {
         </nav>
 
         <div style={styles.filterBox}>
+          {/* BUSCADOR */}
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
             <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
 
+          {/* FILTRO ESTADO (RESTAURADO) */}
+          <select style={{...styles.input, border: filtroStatus ? '1px solid #fbbf24' : '1px solid #444'}} value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)}>
+            <option value="">ESTADO (TODOS)</option>
+            {ESTADOS_POSIBLES.map(est => <option key={est} value={est}>{est}</option>)}
+          </select>
+
+          {/* FILTRO FECHA */}
           <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
             <option value="">FECHA (TODAS)</option>
             {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
 
+          {/* FILTRO MES */}
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
             {["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"].map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+
+          {/* FILTRO REGION */}
           <select style={styles.input} value={filtroRegion} onChange={e=>{setFiltroRegion(e.target.value); setFiltroTienda("");}}>
             <option value="">REGIÓN</option>
             {regionesDisponibles.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
+
+          {/* FILTRO TIENDA */}
           <select style={styles.input} value={filtroTienda} onChange={e=>setFiltroTienda(e.target.value)}>
             <option value="">SUCURSAL</option>
             {tiendasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
+
           <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR REPALDO</button>
         </div>
 
@@ -262,12 +277,7 @@ export default function App() {
                               const nuevoStatus = e.target.value;
                               setPersonal(prev => prev.map(item => item.id === p.id ? {...item, status: nuevoStatus} : item));
                             }} style={styles.statusBadge(p.status, p.bloqueado)}>
-                              <option value="ACTIVO">ACTIVO</option>
-                              <option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option>
-                              <option value="VACACIONES">VACACIONES</option>
-                              <option value="REPOSO">REPOSO</option>
-                              <option value="EGRESO">EGRESO</option>
-                              <option value="AUSENCIA INJUSTIFICADA">AUSENCIA INJUSTIFICADA</option>
+                              {ESTADOS_POSIBLES.map(est => <option key={est} value={est}>{est}</option>)}
                             </select>
                             <button onClick={() => !p.bloqueado && handleGuardar(p.id, p.status)} style={styles.btnSave(p.bloqueado)}>
                               {p.bloqueado ? <CheckCircle size={18} /> : <Save size={18} />}
