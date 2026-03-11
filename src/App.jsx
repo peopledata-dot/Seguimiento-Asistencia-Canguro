@@ -56,6 +56,7 @@ export default function App() {
   // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
+  const [filtroFecha, setFiltroFecha] = useState(""); // NUEVO FILTRO DE FECHA
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
 
@@ -81,18 +82,25 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // Lógica de Filtrado (CORREGIDO PARA "Fecha" con F mayúscula)
+  // NUEVO: Lista de fechas únicas disponibles en la BDD
+  const fechasDisponibles = useMemo(() => {
+    const fechas = personal.map(p => p.Fecha || p.fecha || p.fechaCarga).filter(Boolean);
+    return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
+  }, [personal]);
+
+  // Lógica de Filtrado (CORREGIDO PARA ACTUALIZACIÓN)
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      const pFecha = p.Fecha || p.fecha || p.fechaCarga || ""; // Detecta Fecha de Excel
+      const pFecha = p.Fecha || p.fecha || p.fechaCarga || ""; 
       const pMes = (p.mes || "").toUpperCase();
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
       const matchMes = !filtroMes || pMes === filtroMes;
+      const matchFecha = !filtroFecha || pFecha === filtroFecha; // Filtro por fecha exacta
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
-      return matchSearch && matchMes && matchRegion && matchTienda;
+      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
     });
-  }, [personal, busqueda, filtroMes, filtroRegion, filtroTienda]);
+  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
 
   // Estadísticas del Dashboard
   const statsPorEstado = useMemo(() => {
@@ -177,6 +185,13 @@ export default function App() {
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
             <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
+
+          {/* SELECTOR DE FECHA (RESTAURADO) */}
+          <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
+            <option value="">FECHA (TODAS)</option>
+            {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
             {["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"].map(m => <option key={m} value={m}>{m}</option>)}
@@ -249,7 +264,6 @@ export default function App() {
           </>
         ) : (
           <div style={styles.dashGrid}>
-            {/* Gráfico de Barras Laterales */}
             <div style={{...styles.dashCard, gridColumn: 'span 1'}}>
               <h3 style={{color: '#fbbf24', display:'flex', alignItems:'center', gap:'10px', marginBottom:'25px'}}><BarChart3 size={20}/> MÉTRICAS DE CUMPLIMIENTO</h3>
               <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
@@ -267,7 +281,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Gráfico Comparativo de Columnas */}
             <div style={{...styles.dashCard, gridColumn: 'span 1'}}>
               <h4 style={{textAlign:'center', color:'#888', textTransform:'uppercase', fontSize:'12px', marginBottom:'30px'}}>Análisis Nacional</h4>
               <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
