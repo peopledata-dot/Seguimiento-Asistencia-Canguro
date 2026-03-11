@@ -2,12 +2,12 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.FIREBASE_API_KEY,
-  authDomain: import.meta.env.FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.FIREBASE_APP_ID
+  apiKey: "AIzaSyB2k-WOoIy_hSnzlkClaf7DCL3ERTbs-Qg",
+  authDomain: "matrizpro-c27c6.firebaseapp.com",
+  projectId: "matrizpro-c27c6",
+  storageBucket: "matrizpro-c27c6.appspot.com",
+  messagingSenderId: "529048990599",
+  appId: "1:529048990599:web:787453dd2185ea06801922"
 };
 
 const app = initializeApp(firebaseConfig);
