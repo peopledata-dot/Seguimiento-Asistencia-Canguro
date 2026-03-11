@@ -53,12 +53,13 @@ export default function App() {
   const [personal, setPersonal] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
-  const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
 
+  // Carga de datos
   useEffect(() => {
     if (isAuthenticated) {
       const q = query(collection(db, "personal"), orderBy("Nombre", "asc"));
@@ -70,6 +71,7 @@ export default function App() {
     }
   }, [isAuthenticated]);
 
+  // Listas desplegables dinámicas
   const regionesDisponibles = useMemo(() => 
     [...new Set(personal.map(p => p.region))].filter(Boolean).sort()
   , [personal]);
@@ -79,19 +81,20 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
+  // Lógica de Filtrado (CORREGIDO PARA "Fecha" con F mayúscula)
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      const pFecha = p.Fecha || p.fecha || p.fechaCarga || "";
+      const pFecha = p.Fecha || p.fecha || p.fechaCarga || ""; // Detecta Fecha de Excel
       const pMes = (p.mes || "").toUpperCase();
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
       const matchMes = !filtroMes || pMes === filtroMes;
-      const matchFecha = !filtroFecha || pFecha === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
-      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
+      return matchSearch && matchMes && matchRegion && matchTienda;
     });
-  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
+  }, [personal, busqueda, filtroMes, filtroRegion, filtroTienda]);
 
+  // Estadísticas del Dashboard
   const statsPorEstado = useMemo(() => {
     const estados = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
     const total = filtrados.length || 0;
@@ -106,6 +109,7 @@ export default function App() {
     });
   }, [filtrados]);
 
+  // Exportar a Excel
   const exportarExcel = () => {
     if (filtrados.length === 0) return alert("No hay datos para exportar");
     const datosExcel = filtrados.map(p => ({
@@ -168,9 +172,10 @@ export default function App() {
           </button>
         </nav>
 
+        {/* FILTROS Y EXCEL */}
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar Colaborador..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
@@ -184,7 +189,7 @@ export default function App() {
             <option value="">SUCURSAL</option>
             {tiendasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR</button>
+          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR REPALDO</button>
         </div>
 
         {activeTab === "auditoria" ? (
@@ -195,9 +200,16 @@ export default function App() {
               <div style={styles.card}><p style={{color:'#888', fontSize:'10px', margin:0}}>FILTRADOS</p><h2 style={{fontSize:'32px', margin:'5px 0'}}>{filtrados.length}</h2></div>
               <div style={styles.card}><p style={{color:'#888', fontSize:'10px', margin:0}}>TOTAL BASE</p><h2 style={{fontSize:'32px', margin:'5px 0'}}>{personal.length}</h2></div>
             </div>
+            
             <div style={{backgroundColor: '#111', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333'}}>
               <table style={styles.table}>
-                <thead><tr style={{backgroundColor: '#1a1a1a'}}><th style={styles.th}>COLABORADOR / SEDE</th><th style={styles.th}>FECHA</th><th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th></tr></thead>
+                <thead>
+                  <tr style={{backgroundColor: '#1a1a1a'}}>
+                    <th style={styles.th}>COLABORADOR / SEDE</th>
+                    <th style={styles.th}>FECHA</th>
+                    <th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {loading ? (
                     <tr><td colSpan="3" style={{textAlign:'center', padding:'50px'}}><RefreshCw className="animate-spin" color="#fbbf24" /></td></tr>
@@ -208,11 +220,20 @@ export default function App() {
                           <div style={{textTransform:'uppercase', fontWeight:'bold'}}>{p.Nombre} {p.Apellido}</div>
                           <div style={{fontSize:'13px', color:'#fbbf24'}}>{p.sucursal} | {p.region}</div>
                         </td>
-                        <td style={styles.td}><div style={{fontSize:'14px', color:'#666'}}><Calendar size={14}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}</div></td>
+                        <td style={styles.td}>
+                          <div style={{fontSize:'14px', color:'#666', display:'flex', alignItems:'center', gap:'5px'}}>
+                            <Calendar size={14}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}
+                          </div>
+                        </td>
                         <td style={styles.td}>
                           <div style={{display:'flex', gap:'8px', justifyContent:'center'}}>
                             <select value={p.status} disabled={p.bloqueado} onChange={(e) => updateDoc(doc(db, "personal", p.id), { status: e.target.value })} style={styles.statusBadge(p.status, p.bloqueado)}>
-                              <option value="ACTIVO">ACTIVO</option><option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option><option value="VACACIONES">VACACIONES</option><option value="REPOSO">REPOSO</option><option value="EGRESO">EGRESO</option><option value="AUSENCIA INJUSTIFICADA">AUSENCIA INJUSTIFICADA</option>
+                              <option value="ACTIVO">ACTIVO</option>
+                              <option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option>
+                              <option value="VACACIONES">VACACIONES</option>
+                              <option value="REPOSO">REPOSO</option>
+                              <option value="EGRESO">EGRESO</option>
+                              <option value="AUSENCIA INJUSTIFICADA">AUSENCIA INJUSTIFICADA</option>
                             </select>
                             <button onClick={() => !p.bloqueado && handleGuardar(p.id, p.status)} style={styles.btnSave(p.bloqueado)}>
                               {p.bloqueado ? <CheckCircle size={18} /> : <Save size={18} />}
@@ -228,29 +249,33 @@ export default function App() {
           </>
         ) : (
           <div style={styles.dashGrid}>
-            <div style={{...styles.dashCard, gridColumn: 'span 2'}}>
-              <h3 style={{color: '#fbbf24', display:'flex', alignItems:'center', gap:'10px'}}><BarChart3 size={20}/> MÉTRICAS DE CUMPLIMIENTO</h3>
-              <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginTop:'20px'}}>
+            {/* Gráfico de Barras Laterales */}
+            <div style={{...styles.dashCard, gridColumn: 'span 1'}}>
+              <h3 style={{color: '#fbbf24', display:'flex', alignItems:'center', gap:'10px', marginBottom:'25px'}}><BarChart3 size={20}/> MÉTRICAS DE CUMPLIMIENTO</h3>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
                 {statsPorEstado.map(est => (
-                  <div key={est.nombre} style={{backgroundColor:'#000', padding:'20px', borderRadius:'15px', border:'1px solid #222', position:'relative', overflow:'hidden'}}>
-                    <div style={{position:'absolute', bottom:0, left:0, width:`${est.porcentaje}%`, height:'4px', backgroundColor:est.color}}></div>
-                    <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
-                      <span style={{fontSize:'11px', color: '#888', fontWeight:'bold'}}>{est.nombre}</span>
-                      <span style={{fontSize:'18px', fontWeight:'bold', color: est.color}}>{est.porcentaje}%</span>
+                  <div key={est.nombre}>
+                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:'5px'}}>
+                      <span>{est.nombre}</span>
+                      <span style={{color: est.color, fontWeight:'bold'}}>{est.cantidad} ({est.porcentaje}%)</span>
                     </div>
-                    <div style={{fontSize:'32px', fontWeight:'900'}}>{est.cantidad} <span style={{fontSize:'12px', color:'#444'}}>pax</span></div>
+                    <div style={{height:'8px', backgroundColor:'#222', borderRadius:'4px', overflow:'hidden'}}>
+                      <div style={{width:`${est.porcentaje}%`, height:'100%', backgroundColor: est.color, transition:'width 1s'}}></div>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div style={{...styles.dashCard, gridColumn: 'span 2'}}>
-              <h4 style={{textAlign:'center', color:'#888', textTransform:'uppercase', fontSize:'12px'}}>Comparativo Nacional</h4>
-              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'150px', marginTop:'20px'}}>
+
+            {/* Gráfico Comparativo de Columnas */}
+            <div style={{...styles.dashCard, gridColumn: 'span 1'}}>
+              <h4 style={{textAlign:'center', color:'#888', textTransform:'uppercase', fontSize:'12px', marginBottom:'30px'}}>Análisis Nacional</h4>
+              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
                 {statsPorEstado.map(est => (
                   <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
-                    <span style={{fontSize:'10px', color:est.color}}>{est.cantidad}</span>
-                    <div style={{width:'30px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0'}}></div>
-                    <span style={{fontSize:'8px', color:'#444', marginTop:'5px'}}>{est.nombre.split(" ")[0]}</span>
+                    <span style={{fontSize:'10px', color:est.color, fontWeight:'bold'}}>{est.cantidad}</span>
+                    <div style={{width:'30px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0', transition:'height 1s'}}></div>
+                    <span style={{fontSize:'8px', color:'#444', marginTop:'8px', textAlign:'center'}}>{est.nombre.split(" ")[0]}</span>
                   </div>
                 ))}
               </div>
