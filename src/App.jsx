@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from './firebaseConfig';
-import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore'; // Cambiado a getDocs para ahorro de cuota
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-center';
+import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore'; 
+// Corregido: lucide-react es el nombre correcto
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+// Estilos (se mantienen los que ya tienes)
 const styles = {
   loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
   loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1 },
@@ -60,7 +62,7 @@ export default function App() {
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
 
-  // FUNCIÓN DE CARGA BAJO DEMANDA (Optimiza el consumo de cuota)
+  // FUNCIÓN DE CARGA MANUAL (Previene agotar las 50k lecturas gratis)
   const fetchDatos = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
@@ -70,18 +72,14 @@ export default function App() {
       const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setPersonal(docs);
     } catch (error) {
-      console.error("Error Firebase:", error);
       if (error.message.includes("quota")) {
-        alert("⚠️ CUOTA EXCEDIDA: Firebase ha bloqueado las lecturas por hoy. Intenta de nuevo mañana.");
-      } else {
-        alert("Error al cargar datos: " + error.message);
+        alert("⚠️ ATENCIÓN: Se agotó el límite diario de Firebase. Los datos del día 11 aparecerán cuando se reinicie el contador.");
       }
     } finally {
       setLoading(false);
     }
   }, [isAuthenticated]);
 
-  // Cargar al autenticar
   useEffect(() => {
     fetchDatos();
   }, [fetchDatos]);
@@ -101,7 +99,6 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // Lógica de Filtrado Flexible
   const filtrados = useMemo(() => {
     return personal.filter(p => {
       const pFecha = p.Fecha || p.fecha || p.fechaCarga || p.FECHA || ""; 
@@ -115,7 +112,6 @@ export default function App() {
     });
   }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
 
-  // Estadísticas
   const statsPorEstado = useMemo(() => {
     const estados = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
     const total = filtrados.length || 0;
@@ -147,14 +143,13 @@ export default function App() {
   };
 
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar guardado irreversible?")) {
+    if (window.confirm("¿Confirmar guardado?")) {
       try {
         await updateDoc(doc(db, "personal", id), { 
           status: statusActual, 
           bloqueado: true, 
           fechaBloqueo: new Date().toISOString() 
         });
-        // Actualización local para no gastar lecturas re-descargando
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
       } catch (error) { alert("Error: " + error.message); }
     }
@@ -165,7 +160,7 @@ export default function App() {
       <div style={styles.loginDarken}></div>
       <div style={styles.loginCard}>
         <Lock size={40} color="#fbbf24" style={{marginBottom:'20px'}}/>
-        <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ DE SEGUIMIENTO ASISTENCIA CANGURO NACIONAL 2026</h2>
+        <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
         <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Acceso denegado"); }}>
           <input style={{...styles.input, width:'90%', marginBottom:'10px'}} placeholder="Usuario" onChange={e=>setUser(e.target.value)} />
           <input type="password" style={{...styles.input, width:'90%', marginBottom:'20px'}} placeholder="Contraseña" onChange={e=>setPass(e.target.value)} />
@@ -188,7 +183,7 @@ export default function App() {
           </div>
           <div style={{display:'flex', gap:'10px'}}>
             <button onClick={fetchDatos} style={{...styles.btnOut, backgroundColor: '#333'}}>
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> {loading ? "CARGANDO..." : "REFRESCAR BDD"}
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> REFRESCAR BDD
             </button>
             <button onClick={()=>setIsAuthenticated(false)} style={styles.btnOut}><LogOut size={18}/> SALIR</button>
           </div>
@@ -304,7 +299,6 @@ export default function App() {
                 ))}
               </div>
             </div>
-
             <div style={{...styles.dashCard, gridColumn: 'span 1'}}>
               <h4 style={{textAlign:'center', color:'#888', textTransform:'uppercase', fontSize:'12px', marginBottom:'30px'}}>Análisis Nacional</h4>
               <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
