@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from './firebaseConfig';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase/firestore';
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore'; // Cambiado a getDocs para ahorro de cuota
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-center';
 import * as XLSX from 'xlsx';
 
 const styles = {
@@ -51,28 +51,47 @@ export default function App() {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [personal, setPersonal] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   
   // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
-  const [filtroFecha, setFiltroFecha] = useState(""); // NUEVO FILTRO DE FECHA
+  const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
 
-  // Carga de datos
-  useEffect(() => {
-    if (isAuthenticated) {
+  // FUNCIÓN DE CARGA BAJO DEMANDA (Optimiza el consumo de cuota)
+  const fetchDatos = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setLoading(true);
+    try {
       const q = query(collection(db, "personal"), orderBy("Nombre", "asc"));
-      const unsub = onSnapshot(q, (snap) => {
-        setPersonal(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoading(false);
-      });
-      return () => unsub();
+      const querySnapshot = await getDocs(q);
+      const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPersonal(docs);
+    } catch (error) {
+      console.error("Error Firebase:", error);
+      if (error.message.includes("quota")) {
+        alert("⚠️ CUOTA EXCEDIDA: Firebase ha bloqueado las lecturas por hoy. Intenta de nuevo mañana.");
+      } else {
+        alert("Error al cargar datos: " + error.message);
+      }
+    } finally {
+      setLoading(false);
     }
   }, [isAuthenticated]);
 
-  // Listas desplegables dinámicas
+  // Cargar al autenticar
+  useEffect(() => {
+    fetchDatos();
+  }, [fetchDatos]);
+
+  // Selectores Dinámicos
+  const fechasDisponibles = useMemo(() => {
+    const fechas = personal.map(p => p.Fecha || p.fecha || p.fechaCarga || p.FECHA).filter(Boolean);
+    return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
+  }, [personal]);
+
   const regionesDisponibles = useMemo(() => 
     [...new Set(personal.map(p => p.region))].filter(Boolean).sort()
   , [personal]);
@@ -82,27 +101,21 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // NUEVO: Lista de fechas únicas disponibles en la BDD
-  const fechasDisponibles = useMemo(() => {
-    const fechas = personal.map(p => p.Fecha || p.fecha || p.fechaCarga).filter(Boolean);
-    return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
-  }, [personal]);
-
-  // Lógica de Filtrado (CORREGIDO PARA ACTUALIZACIÓN)
+  // Lógica de Filtrado Flexible
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      const pFecha = p.Fecha || p.fecha || p.fechaCarga || ""; 
+      const pFecha = p.Fecha || p.fecha || p.fechaCarga || p.FECHA || ""; 
       const pMes = (p.mes || "").toUpperCase();
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
       const matchMes = !filtroMes || pMes === filtroMes;
-      const matchFecha = !filtroFecha || pFecha === filtroFecha; // Filtro por fecha exacta
+      const matchFecha = !filtroFecha || pFecha === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
       return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
     });
   }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
 
-  // Estadísticas del Dashboard
+  // Estadísticas
   const statsPorEstado = useMemo(() => {
     const estados = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
     const total = filtrados.length || 0;
@@ -117,7 +130,6 @@ export default function App() {
     });
   }, [filtrados]);
 
-  // Exportar a Excel
   const exportarExcel = () => {
     if (filtrados.length === 0) return alert("No hay datos para exportar");
     const datosExcel = filtrados.map(p => ({
@@ -137,7 +149,13 @@ export default function App() {
   const handleGuardar = async (id, statusActual) => {
     if (window.confirm("¿Confirmar guardado irreversible?")) {
       try {
-        await updateDoc(doc(db, "personal", id), { status: statusActual, bloqueado: true, fechaBloqueo: new Date().toISOString() });
+        await updateDoc(doc(db, "personal", id), { 
+          status: statusActual, 
+          bloqueado: true, 
+          fechaBloqueo: new Date().toISOString() 
+        });
+        // Actualización local para no gastar lecturas re-descargando
+        setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
       } catch (error) { alert("Error: " + error.message); }
     }
   };
@@ -168,7 +186,12 @@ export default function App() {
               <p style={{margin:0, color:'#555', fontSize:'14px', fontWeight:'bold'}}>SISTEMA DE AUDITORÍA NACIONAL 2026</p>
             </div>
           </div>
-          <button onClick={()=>setIsAuthenticated(false)} style={styles.btnOut}><LogOut size={18}/> SALIR</button>
+          <div style={{display:'flex', gap:'10px'}}>
+            <button onClick={fetchDatos} style={{...styles.btnOut, backgroundColor: '#333'}}>
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> {loading ? "CARGANDO..." : "REFRESCAR BDD"}
+            </button>
+            <button onClick={()=>setIsAuthenticated(false)} style={styles.btnOut}><LogOut size={18}/> SALIR</button>
+          </div>
         </header>
 
         <nav style={styles.navBar}>
@@ -180,13 +203,11 @@ export default function App() {
           </button>
         </nav>
 
-        {/* FILTROS Y EXCEL */}
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
             <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
 
-          {/* SELECTOR DE FECHA (RESTAURADO) */}
           <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
             <option value="">FECHA (TODAS)</option>
             {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
@@ -226,7 +247,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? (
+                  {loading && personal.length === 0 ? (
                     <tr><td colSpan="3" style={{textAlign:'center', padding:'50px'}}><RefreshCw className="animate-spin" color="#fbbf24" /></td></tr>
                   ) : (
                     filtrados.map(p => (
@@ -242,7 +263,10 @@ export default function App() {
                         </td>
                         <td style={styles.td}>
                           <div style={{display:'flex', gap:'8px', justifyContent:'center'}}>
-                            <select value={p.status} disabled={p.bloqueado} onChange={(e) => updateDoc(doc(db, "personal", p.id), { status: e.target.value })} style={styles.statusBadge(p.status, p.bloqueado)}>
+                            <select value={p.status} disabled={p.bloqueado} onChange={(e) => {
+                              const nuevoStatus = e.target.value;
+                              setPersonal(prev => prev.map(item => item.id === p.id ? {...item, status: nuevoStatus} : item));
+                            }} style={styles.statusBadge(p.status, p.bloqueado)}>
                               <option value="ACTIVO">ACTIVO</option>
                               <option value="SIN ACTIVIDAD">SIN ACTIVIDAD</option>
                               <option value="VACACIONES">VACACIONES</option>
