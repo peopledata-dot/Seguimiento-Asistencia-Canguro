@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-canguro-black text-white antialiased font-['Inter'];
+  }
+}
+
+/* Previene logos gigantes antes de cargar */
+img {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+}
