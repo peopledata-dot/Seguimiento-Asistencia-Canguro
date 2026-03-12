@@ -1,18 +1,62 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+/* Limpieza de reglas de Tailwind para evitar errores en Vercel */
+@charset "UTF-8";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
 
-@layer base {
-  body {
-    @apply bg-canguro-black text-white antialiased font-['Inter'];
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #000000;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #000000; /* Fondo negro puro original */
+}
+
+#root {
+  width: 100%;
+}
+
+/* Animación opcional para el icono de carga */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-/* Previene logos gigantes antes de cargar */
-img {
-  max-width: 100%;
-  height: auto;
-  display: inline-block;
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Estilos para el scrollbar (para que combine con tu panel oscuro) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #fbbf24;
 }

@@ -4,6 +4,7 @@ import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/fi
 import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+// --- ESTILOS ORIGINALES PRESERVADOS ---
 const styles = {
   loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
   loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1 },
@@ -47,7 +48,6 @@ const styles = {
 
 const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
 
-// Mapeo para normalizar la extracción de meses desde la fecha DD/MM/YYYY
 const MESES_NOM_A_NUM = {
   "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06",
   "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12"
@@ -77,7 +77,7 @@ export default function App() {
       const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setPersonal(docs);
     } catch (error) {
-      if (error.message.includes("quota")) alert("⚠️ Límite agotado.");
+      if (error.message.includes("quota")) alert("⚠️ Límite de cuota de Firebase agotado.");
     } finally {
       setLoading(false);
     }
@@ -99,22 +99,17 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // LÓGICA DE FILTRADO MEJORADA (Extracción de mes automática)
+  // --- LÓGICA DE FILTRADO CORREGIDA PARA EL MES ---
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      // 1. Obtener fecha raw
       const pFechaStr = (p.Fecha || p.fecha || p.fechaCarga || p.FECHA || "").toString();
       
-      // 2. Extraer mes de la fecha (asumiendo DD/MM/YYYY o DD-MM-YYYY)
-      const partes = pFechaStr.includes('/') ? pFechaStr.split('/') : pFechaStr.split('-');
+      // Corrección aquí: Dividimos por "/" para extraer el mes numérico de la fecha 11/03/2026
+      const partes = pFechaStr.split('/');
       const mesDeFecha = partes.length >= 2 ? partes[1].padStart(2, '0') : "";
 
-      // 3. Evaluar coincidencias
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
-      
-      // El filtro por mes ahora busca el número de mes (03) extraído de la fecha
       const matchMes = !filtroMes || mesDeFecha === MESES_NOM_A_NUM[filtroMes];
-      
       const matchFecha = !filtroFecha || pFechaStr === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
@@ -138,7 +133,7 @@ export default function App() {
   }, [filtrados]);
 
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar guardado?")) {
+    if (window.confirm("¿Confirmar guardado en la Matriz?")) {
       try {
         await updateDoc(doc(db, "personal", id), { 
           status: statusActual, 
@@ -146,12 +141,12 @@ export default function App() {
           fechaBloqueo: new Date().toISOString() 
         });
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
-      } catch (error) { alert("Error: " + error.message); }
+      } catch (error) { alert("Error al guardar: " + error.message); }
     }
   };
 
   const exportarExcel = () => {
-    if (filtrados.length === 0) return alert("No hay datos");
+    if (filtrados.length === 0) return alert("No hay datos para exportar");
     const ws = XLSX.utils.json_to_sheet(filtrados.map(p => ({
       NOMBRE: `${p.Nombre} ${p.Apellido}`,
       ID: p.ID || '---',
@@ -162,7 +157,7 @@ export default function App() {
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
-    XLSX.writeFile(wb, `Reporte_Matriz_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `Reporte_Matriz_SRT_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (!isAuthenticated) return (
@@ -171,7 +166,7 @@ export default function App() {
       <div style={styles.loginCard}>
         <Lock size={40} color="#fbbf24" style={{marginBottom:'20px'}}/>
         <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
-        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Denegado"); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Acceso Denegado"); }}>
           <input style={{...styles.input, width:'90%', marginBottom:'10px'}} placeholder="Usuario" onChange={e=>setUser(e.target.value)} />
           <input type="password" style={{...styles.input, width:'90%', marginBottom:'20px'}} placeholder="Contraseña" onChange={e=>setPass(e.target.value)} />
           <button type="submit" style={{backgroundColor:'#fbbf24', color:'#000', width:'100%', padding:'12px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>ENTRAR AL PANEL</button>
@@ -210,7 +205,7 @@ export default function App() {
 
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
 
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
@@ -242,7 +237,7 @@ export default function App() {
               <thead>
                 <tr style={{backgroundColor: '#1a1a1a'}}>
                   <th style={styles.th}>COLABORADOR / SEDE</th>
-                  <th style={styles.th}>FECHA</th>
+                  <th style={styles.th}>FECHA CARGA</th>
                   <th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th>
                 </tr>
               </thead>
