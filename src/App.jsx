@@ -4,7 +4,6 @@ import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/fi
 import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// --- ESTILOS ORIGINALES PRESERVADOS ---
 const styles = {
   loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
   loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1 },
@@ -21,8 +20,6 @@ const styles = {
     border: active ? 'none' : '1px solid #333',
     padding: '10px 25px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', transition: '0.3s'
   }),
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' },
-  card: { backgroundColor: '#111', border: '1px solid #333', padding: '15px', borderRadius: '12px', textAlign: 'center' },
   filterBox: { backgroundColor: '#111', padding: '15px', borderRadius: '12px', marginBottom: '20px', display: 'flex', gap: '10px', border: '1px solid #222', flexWrap: 'wrap', alignItems: 'center' },
   input: { backgroundColor: '#000', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '14px', flex: '1', minWidth: '120px' },
   table: { width: '100%', borderCollapse: 'collapse' },
@@ -47,11 +44,7 @@ const styles = {
 };
 
 const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
-
-const MESES_NOM_A_NUM = {
-  "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06",
-  "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12"
-};
+const MESES_NOM_A_NUM = { "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06", "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12" };
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -77,7 +70,7 @@ export default function App() {
       const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setPersonal(docs);
     } catch (error) {
-      if (error.message.includes("quota")) alert("⚠️ Límite de cuota de Firebase agotado.");
+      if (error.message.includes("quota")) alert("⚠️ Límite agotado.");
     } finally {
       setLoading(false);
     }
@@ -85,26 +78,22 @@ export default function App() {
 
   useEffect(() => { fetchDatos(); }, [fetchDatos]);
 
+  // AJUSTE: Ahora busca prioritariamente 'fecha' en minúsculas
   const fechasDisponibles = useMemo(() => {
-    const fechas = personal.map(p => p.Fecha || p.fecha || p.fechaCarga || p.FECHA).filter(Boolean);
+    const fechas = personal.map(p => p.fecha || p.Fecha || p.fechaCarga).filter(Boolean);
     return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
   }, [personal]);
 
-  const regionesDisponibles = useMemo(() => 
-    [...new Set(personal.map(p => p.region))].filter(Boolean).sort()
-  , [personal]);
-
+  const regionesDisponibles = useMemo(() => [...new Set(personal.map(p => p.region))].filter(Boolean).sort(), [personal]);
   const tiendasDisponibles = useMemo(() => {
     const base = filtroRegion ? personal.filter(p => p.region === filtroRegion) : personal;
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // --- LÓGICA DE FILTRADO CORREGIDA PARA EL MES ---
+  // AJUSTE: Filtrado dinámico que acepta 'fecha' o 'Fecha'
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      const pFechaStr = (p.Fecha || p.fecha || p.fechaCarga || p.FECHA || "").toString();
-      
-      // Corrección aquí: Dividimos por "/" para extraer el mes numérico de la fecha 11/03/2026
+      const pFechaStr = (p.fecha || p.Fecha || p.fechaCarga || "").toString();
       const partes = pFechaStr.split('/');
       const mesDeFecha = partes.length >= 2 ? partes[1].padStart(2, '0') : "";
 
@@ -124,8 +113,7 @@ export default function App() {
     return ESTADOS_POSIBLES.map(est => {
       const cant = filtrados.filter(p => p.status === est).length;
       return {
-        nombre: est,
-        cantidad: cant,
+        nombre: est, cantidad: cant,
         porcentaje: total > 0 ? ((cant / total) * 100).toFixed(1) : 0,
         color: est === "ACTIVO" ? "#fbbf24" : est === "SIN ACTIVIDAD" ? "#ef4444" : "#555"
       };
@@ -133,31 +121,12 @@ export default function App() {
   }, [filtrados]);
 
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar guardado en la Matriz?")) {
+    if (window.confirm("¿Confirmar guardado?")) {
       try {
-        await updateDoc(doc(db, "personal", id), { 
-          status: statusActual, 
-          bloqueado: true, 
-          fechaBloqueo: new Date().toISOString() 
-        });
+        await updateDoc(doc(db, "personal", id), { status: statusActual, bloqueado: true, fechaBloqueo: new Date().toISOString() });
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
-      } catch (error) { alert("Error al guardar: " + error.message); }
+      } catch (error) { alert("Error: " + error.message); }
     }
-  };
-
-  const exportarExcel = () => {
-    if (filtrados.length === 0) return alert("No hay datos para exportar");
-    const ws = XLSX.utils.json_to_sheet(filtrados.map(p => ({
-      NOMBRE: `${p.Nombre} ${p.Apellido}`,
-      ID: p.ID || '---',
-      SUCURSAL: p.sucursal,
-      REGION: p.region,
-      ESTADO: p.status,
-      FECHA: p.Fecha || p.fecha || p.fechaCarga || '---'
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
-    XLSX.writeFile(wb, `Reporte_Matriz_SRT_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (!isAuthenticated) return (
@@ -166,7 +135,7 @@ export default function App() {
       <div style={styles.loginCard}>
         <Lock size={40} color="#fbbf24" style={{marginBottom:'20px'}}/>
         <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
-        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Acceso Denegado"); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Denegado"); }}>
           <input style={{...styles.input, width:'90%', marginBottom:'10px'}} placeholder="Usuario" onChange={e=>setUser(e.target.value)} />
           <input type="password" style={{...styles.input, width:'90%', marginBottom:'20px'}} placeholder="Contraseña" onChange={e=>setPass(e.target.value)} />
           <button type="submit" style={{backgroundColor:'#fbbf24', color:'#000', width:'100%', padding:'12px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>ENTRAR AL PANEL</button>
@@ -205,30 +174,24 @@ export default function App() {
 
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
-
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
             {Object.keys(MESES_NOM_A_NUM).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-
           <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
             <option value="">FECHA ESPECÍFICA</option>
             {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
-
           <select style={styles.input} value={filtroRegion} onChange={e=>{setFiltroRegion(e.target.value); setFiltroTienda("");}}>
             <option value="">REGIÓN</option>
             {regionesDisponibles.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
-
           <select style={styles.input} value={filtroTienda} onChange={e=>setFiltroTienda(e.target.value)}>
             <option value="">SUCURSAL</option>
             {tiendasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-
-          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR</button>
         </div>
 
         {activeTab === "auditoria" ? (
@@ -237,7 +200,7 @@ export default function App() {
               <thead>
                 <tr style={{backgroundColor: '#1a1a1a'}}>
                   <th style={styles.th}>COLABORADOR / SEDE</th>
-                  <th style={styles.th}>FECHA CARGA</th>
+                  <th style={styles.th}>FECHA</th>
                   <th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th>
                 </tr>
               </thead>
@@ -250,7 +213,7 @@ export default function App() {
                     </td>
                     <td style={styles.td}>
                       <div style={{fontSize:'14px', color:'#666', display:'flex', alignItems:'center', gap:'5px'}}>
-                        <Calendar size={14}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}
+                        <Calendar size={14}/> {p.fecha || p.Fecha || '---'}
                       </div>
                     </td>
                     <td style={styles.td}>
@@ -274,7 +237,7 @@ export default function App() {
         ) : (
           <div style={styles.dashGrid}>
             <div style={styles.dashCard}>
-              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS DE CUMPLIMIENTO</h3>
+              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS</h3>
               {statsPorEstado.map(est => (
                 <div key={est.nombre} style={{marginBottom:'15px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px'}}>
@@ -288,7 +251,7 @@ export default function App() {
               ))}
             </div>
             <div style={styles.dashCard}>
-              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>GRÁFICO DE ESTADO</h4>
+              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>GRÁFICO</h4>
               <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
                 {statsPorEstado.map(est => (
                   <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
