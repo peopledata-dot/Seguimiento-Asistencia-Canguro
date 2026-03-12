@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, onValue, update } from 'firebase/database'; 
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet, Users, Activity, AlertCircle, MapPin, Building2 } from 'lucide-react';
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet, Users, Activity, AlertCircle, MapPin } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+// CONFIGURACIÓN FIREBASE (Manteniendo Realtime Database para evitar errores de cuota)
 const firebaseConfig = {
   apiKey: "AIzaSyB2k-WOoIy_hSnzlkClaf7DCL3ERTbs-Qg",
   authDomain: "matrizpro-c27c6.firebaseapp.com",
@@ -17,45 +18,49 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Estilos mejorados para KPIs y Tablas
 const styles = {
-  container: { backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '20px', fontFamily: 'Inter, sans-serif' },
-  wrapper: { maxWidth: '1600px', margin: '0 auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' },
-  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '30px' },
-  kpiCard: (color) => ({
-    background: 'linear-gradient(145deg, #111, #050505)',
-    borderLeft: `5px solid ${color}`,
-    padding: '25px',
+  container: { backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif' },
+  wrapper: { width: '100%', maxWidth: '1600px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' },
+  logoSection: { display: 'flex', alignItems: 'center', gap: '15px' },
+  
+  // KPIs con el estilo de tu imagen
+  kpiGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '25px' },
+  kpiCard: (borderColor) => ({
+    backgroundColor: '#0a0a0a',
+    border: `1px solid ${borderColor}`,
     borderRadius: '12px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    padding: '20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px'
+    position: 'relative'
   }),
-  filterBox: { 
-    backgroundColor: '#111', 
-    padding: '20px', 
-    borderRadius: '15px', 
-    marginBottom: '20px', 
-    display: 'grid', 
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
-    gap: '15px',
-    border: '1px solid #222'
-  },
-  input: { backgroundColor: '#000', border: '1px solid #333', color: '#fff', padding: '12px', borderRadius: '8px', outline: 'none' },
+  
+  // Filtros y Navegación
   navBtn: (active) => ({
-    backgroundColor: active ? '#fbbf24' : 'transparent',
+    backgroundColor: active ? '#fbbf24' : '#0a0a0a',
     color: active ? '#000' : '#888',
-    padding: '12px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: active ? 'none' : '1px solid #333', display: 'flex', alignItems: 'center', gap: '8px'
+    border: active ? 'none' : '1px solid #222',
+    padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px'
   }),
-  table: { width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' },
-  tr: { backgroundColor: '#0a0a0a', transition: '0.3s' },
-  td: { padding: '16px', borderBottom: '1px solid #1a1a1a' },
-  statusBadge: (status) => ({
-    backgroundColor: status === 'ACTIVO' ? '#064e3b' : status === 'SIN ACTIVIDAD' ? '#450a0a' : '#1a1a1a',
-    color: status === 'ACTIVO' ? '#34d399' : status === 'SIN ACTIVIDAD' ? '#ef4444' : '#888',
-    padding: '8px', borderRadius: '6px', border: 'none', fontWeight: 'bold', width: '100%'
+  filterRow: { display: 'flex', gap: '10px', marginBottom: '20px' },
+  inputSearch: { backgroundColor: '#0a0a0a', border: '1px solid #222', color: '#fff', padding: '12px', borderRadius: '8px', flex: 2, display: 'flex', alignItems: 'center', gap: '10px' },
+  select: { backgroundColor: '#0a0a0a', border: '1px solid #222', color: '#fff', padding: '12px', borderRadius: '8px', flex: 1, cursor: 'pointer' },
+  
+  // Tabla Estilo Original
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: { color: '#fbbf24', textAlign: 'left', padding: '15px', fontSize: '12px', borderBottom: '1px solid #222', textTransform: 'uppercase' },
+  td: { padding: '15px', borderBottom: '1px solid #111', verticalAlign: 'middle' },
+  
+  // Badge de Estado
+  statusSelect: (status) => ({
+    backgroundColor: '#0a0a0a',
+    color: status === 'ACTIVO' ? '#34d399' : status === 'SIN ACTIVIDAD' ? '#ef4444' : '#fff',
+    border: '1px solid #333',
+    padding: '8px',
+    borderRadius: '6px',
+    width: '100%',
+    fontWeight: 'bold'
   })
 };
 
@@ -67,17 +72,17 @@ export default function App() {
   const [personal, setPersonal] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Filtros
+  // Filtros originales
   const [busqueda, setBusqueda] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
-  const [filtroRegion, setFiltroRegion] = useState("");
-  const [filtroSede, setFiltroSede] = useState("");
+  const [filtroFecha, setFiltroFecha] = useState("");
 
   useEffect(() => {
     const dbRef = ref(db, 'personal');
     const unsubscribe = onValue(dbRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
+        // Mapeo flexible para nombres de columnas (ID, Sede, region, etc)
         const lista = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         setPersonal(lista);
       }
@@ -86,156 +91,160 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- Listas Dinámicas para los Selects ---
-  const regiones = useMemo(() => [...new Set(personal.map(p => p.region || p.Región).filter(Boolean))], [personal]);
-  const sedes = useMemo(() => [...new Set(personal.map(p => p.sucursal || p.Sede || p.Sucursal).filter(Boolean))], [personal]);
-  const meses = useMemo(() => [...new Set(personal.map(p => (p.mes || p.Mes || "").toUpperCase()).filter(Boolean))], [personal]);
-
-  // --- Lógica de Filtrado ---
+  // Lógica de filtrado reactivo
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      const pNombre = `${p.Nombre || ''} ${p.Apellido || ''} ${p.ID || ''}`.toLowerCase();
-      const pReg = (p.region || p.Región || "").toLowerCase();
-      const pSed = (p.sucursal || p.Sede || p.Sucursal || "").toLowerCase();
-      const pM = (p.mes || p.Mes || "").toUpperCase();
+      const nombreCompleto = `${p.Nombre || ''} ${p.Apellido || ''} ${p.ID || ''} ${p.region || p.Región || ''}`.toLowerCase();
+      const pMes = (p.mes || p.Mes || "").toUpperCase();
+      const pFecha = (p.fecha || p.Fecha || p.FECHA || "");
 
-      const matchSearch = pNombre.includes(busqueda.toLowerCase());
-      const matchReg = !filtroRegion || pReg === filtroRegion.toLowerCase();
-      const matchSed = !filtroSede || pSed === filtroSede.toLowerCase();
-      const matchMes = !filtroMes || pM === filtroMes;
+      const matchBusqueda = nombreCompleto.includes(busqueda.toLowerCase());
+      const matchMes = !filtroMes || pMes === filtroMes;
+      const matchFecha = !filtroFecha || pFecha === filtroFecha;
 
-      return matchSearch && matchReg && matchSed && matchMes;
+      return matchBusqueda && matchMes && matchFecha;
     });
-  }, [personal, busqueda, filtroRegion, filtroSede, filtroMes]);
+  }, [personal, busqueda, filtroMes, filtroFecha]);
 
-  // --- KPIs Reactivos ---
-  const kpis = useMemo(() => ({
-    total: filtrados.length,
-    activos: filtrados.filter(p => p.status === "ACTIVO").length,
-    alertas: filtrados.filter(p => p.status === "SIN ACTIVIDAD").length
-  }), [filtrados]);
+  // Listas para los selects
+  const listaMeses = useMemo(() => [...new Set(personal.map(p => (p.mes || p.Mes || "").toUpperCase()).filter(Boolean))], [personal]);
+  const listaFechas = useMemo(() => [...new Set(personal.map(p => p.fecha || p.Fecha || p.FECHA).filter(Boolean))].sort(), [personal]);
 
-  const handleGuardar = async (id, statusActual) => {
-    if (!statusActual) return alert("Seleccione un estado");
+  const cantActivos = filtrados.filter(p => p.status === "ACTIVO").length;
+  const cantSinActividad = filtrados.filter(p => p.status === "SIN ACTIVIDAD").length;
+
+  const handleSave = async (id, status) => {
+    if(!status) return;
     try {
-      await update(ref(db, `personal/${id}`), { status: statusActual, bloqueado: true });
-    } catch (e) { alert("Error: " + e.message); }
+      await update(ref(db, `personal/${id}`), { status, bloqueado: true });
+    } catch (e) { alert("Error al guardar"); }
   };
 
   if (!isAuthenticated) return (
     <div style={{height:'100vh', display:'flex', justifyContent:'center', alignItems:'center', backgroundColor:'#000'}}>
-        <div style={{textAlign:'center', padding:'40px', background:'#111', borderRadius:'20px', border:'1px solid #333'}}>
-            <h2 style={{color:'#fbbf24', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
-            <button onClick={() => setIsAuthenticated(true)} style={{padding:'15px 40px', backgroundColor:'#fbbf24', border:'none', borderRadius:'10px', fontWeight:'bold', cursor:'pointer'}}>INGRESAR AL SISTEMA</button>
-        </div>
+      <button onClick={() => setIsAuthenticated(true)} style={{padding:'15px 30px', backgroundColor:'#fbbf24', fontWeight:'bold', cursor:'pointer', borderRadius:'8px'}}>ENTRAR A MATRIZ PRO</button>
     </div>
   );
 
   return (
     <div style={styles.container}>
       <div style={styles.wrapper}>
+        
+        {/* HEADER ORIGINAL */}
         <header style={styles.header}>
-          <div>
-            <h1 style={{margin:0, fontSize:'32px', fontWeight:'900'}}>MATRIZ <span style={{color:'#fbbf24'}}>PRO</span></h1>
-            <p style={{color:'#555', margin:0}}>Control de Asistencia Nacional</p>
+          <div style={styles.logoSection}>
+             <img src="/logo-canguro.png" alt="Canguro" style={{width:'40px'}} />
+             <div>
+                <h1 style={{margin:0, fontSize:'24px', fontWeight:'900'}}>MATRIZ ASISTENCIA <span style={{color:'#fbbf24'}}>PRO</span></h1>
+                <p style={{margin:0, fontSize:'12px', color:'#555', fontWeight:'bold'}}>SISTEMA NACIONAL 2026</p>
+             </div>
           </div>
           <div style={{display:'flex', gap:'10px'}}>
-             <button onClick={() => window.location.reload()} style={styles.navBtn(false)}><RefreshCw size={18}/> {loading ? "Cargando..." : "Refrescar"}</button>
-             <button onClick={() => setIsAuthenticated(false)} style={{...styles.navBtn(false), backgroundColor:'#ef4444', color:'#fff', border:'none'}}><LogOut size={18}/> Salir</button>
+            <button style={{backgroundColor:'#166534', color:'#fff', border:'none', padding:'8px 15px', borderRadius:'6px', display:'flex', alignItems:'center', gap:5, cursor:'pointer'}}><FileSpreadsheet size={16}/> EXCEL</button>
+            <button onClick={() => window.location.reload()} style={{backgroundColor:'#333', color:'#fff', border:'none', padding:'8px 15px', borderRadius:'6px', display:'flex', alignItems:'center', gap:5, cursor:'pointer'}}>
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""}/> {loading ? "CARGANDO..." : "REFRESCAR"}
+            </button>
+            <button onClick={() => setIsAuthenticated(false)} style={{backgroundColor:'#ef4444', color:'#fff', border:'none', padding:'8px 15px', borderRadius:'6px', display:'flex', alignItems:'center', gap:5, cursor:'pointer'}}><LogOut size={16}/> SALIR</button>
           </div>
         </header>
 
-        {/* KPIs VISUALES MEJORADOS */}
+        {/* KPIs ORIGINALES (Imagen 6) */}
         <div style={styles.kpiGrid}>
-          <div style={styles.kpiCard('#888')}>
-            <span style={{color:'#888', fontSize:'14px', fontWeight:'bold'}}>REGISTROS EN VISTA</span>
-            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-              <Users size={35} color="#fbbf24"/><span style={{fontSize:'40px', fontWeight:'bold'}}>{kpis.total}</span>
+          <div style={styles.kpiCard('#222')}>
+            <span style={{fontSize:'10px', color:'#888', fontWeight:'bold'}}>REGISTROS FILTRADOS</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px', marginTop:'10px'}}>
+              <Users size={24} color="#888"/> <span style={{fontSize:'32px', fontWeight:'bold'}}>{filtrados.length}</span>
             </div>
           </div>
-          <div style={styles.kpiCard('#34d399')}>
-            <span style={{color:'#34d399', fontSize:'14px', fontWeight:'bold'}}>PERSONAL ACTIVO</span>
-            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-              <Activity size={35} color="#34d399"/><span style={{fontSize:'40px', fontWeight:'bold'}}>{kpis.activos}</span>
+          <div style={styles.kpiCard('#fbbf24')}>
+            <span style={{fontSize:'10px', color:'#fbbf24', fontWeight:'bold'}}>ACTIVOS</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px', marginTop:'10px'}}>
+              <Activity size={24} color="#fbbf24"/> <span style={{fontSize:'32px', fontWeight:'bold'}}>{cantActivos}</span>
             </div>
           </div>
           <div style={styles.kpiCard('#ef4444')}>
-            <span style={{color:'#ef4444', fontSize:'14px', fontWeight:'bold'}}>SIN ACTIVIDAD</span>
-            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-              <AlertCircle size={35} color="#ef4444"/><span style={{fontSize:'40px', fontWeight:'bold'}}>{kpis.alertas}</span>
+            <span style={{fontSize:'10px', color:'#ef4444', fontWeight:'bold'}}>SIN ACTIVIDAD</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px', marginTop:'10px'}}>
+              <AlertCircle size={24} color="#ef4444"/> <span style={{fontSize:'32px', fontWeight:'bold'}}>{cantSinActividad}</span>
             </div>
           </div>
         </div>
 
-        <nav style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
-          <button style={styles.navBtn(activeTab === "auditoria")} onClick={() => setActiveTab("auditoria")}><ClipboardList size={18}/> Auditoría</button>
-          <button style={styles.navBtn(activeTab === "panel")} onClick={() => setActiveTab("panel")}><BarChart3 size={18}/> Panel Estadístico</button>
-        </nav>
+        {/* NAVEGACIÓN TABS */}
+        <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
+          <button style={styles.navBtn(activeTab === "auditoria")} onClick={() => setActiveTab("auditoria")}><ClipboardList size={18}/> AUDITORÍA</button>
+          <button style={styles.navBtn(activeTab === "panel")} onClick={() => setActiveTab("panel")}><BarChart3 size={18}/> PANEL</button>
+        </div>
 
-        {/* FILTROS DINÁMICOS */}
-        <div style={styles.filterBox}>
-          <input style={styles.input} placeholder="Buscar por Nombre o ID..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
-          
-          <select style={styles.input} value={filtroRegion} onChange={e=>setFiltroRegion(e.target.value)}>
-            <option value="">TODAS LAS REGIONES</option>
-            {regiones.map(r => <option key={r} value={r}>{r}</option>)}
+        {/* FILTROS ORIGINALES */}
+        <div style={styles.filterRow}>
+          <div style={styles.inputSearch}>
+            <Search size={18} color="#444"/>
+            <input 
+              style={{backgroundColor:'transparent', border:'none', color:'#fff', width:'100%', outline:'none'}} 
+              placeholder="Buscar ID, Nombre, Región..." 
+              value={busqueda} 
+              onChange={e => setBusqueda(e.target.value)} 
+            />
+          </div>
+          <select style={styles.select} value={filtroMes} onChange={e => setFiltroMes(e.target.value)}>
+            <option value="">MES (TODOS)</option>
+            {listaMeses.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
-
-          <select style={styles.input} value={filtroSede} onChange={e=>setFiltroSede(e.target.value)}>
-            <option value="">TODAS LAS SEDES</option>
-            {sedes.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-
-          <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
-            <option value="">TODOS LOS MESES</option>
-            {meses.map(m => <option key={m} value={m}>{m}</option>)}
+          <select style={styles.select} value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)}>
+            <option value="">FECHA (TODAS)</option>
+            {listaFechas.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </div>
 
         {activeTab === "auditoria" ? (
-          <div style={{overflowX:'auto'}}>
+          <div style={{backgroundColor:'#0a0a0a', borderRadius:'12px', border:'1px solid #222'}}>
             <table style={styles.table}>
               <thead>
-                <tr style={{textAlign:'left', color:'#fbbf24', fontSize:'12px'}}>
-                  <th style={{padding:'15px'}}>COLABORADOR</th>
-                  <th>UBICACIÓN</th>
-                  <th>FECHA CARGA</th>
-                  <th style={{textAlign:'center'}}>ESTADO MATRIZ</th>
+                <tr>
+                  <th style={styles.th}>COLABORADOR</th>
+                  <th style={styles.th}>REGIÓN / SUCURSAL</th>
+                  <th style={styles.th}>FECHA CARGA</th>
+                  <th style={{...styles.th, textAlign:'center'}}>ESTADO EN MATRIZ</th>
                 </tr>
               </thead>
               <tbody>
                 {filtrados.map(p => (
-                  <tr key={p.id} style={styles.tr}>
+                  <tr key={p.id}>
                     <td style={styles.td}>
-                      <div style={{fontWeight:'bold', textTransform:'uppercase'}}>{p.Nombre} {p.Apellido}</div>
-                      <div style={{fontSize:'12px', color:'#555'}}>ID: {p.ID}</div>
+                      <div style={{fontWeight:'bold', fontSize:'14px', textTransform:'uppercase'}}>{p.Nombre} {p.Apellido}</div>
+                      <div style={{fontSize:'11px', color:'#555'}}>Identificación: {p.ID}</div>
                     </td>
                     <td style={styles.td}>
-                      <div style={{display:'flex', alignItems:'center', gap:5, fontSize:'13px', color:'#fbbf24'}}><MapPin size={14}/> {p.region || p.Región}</div>
-                      <div style={{display:'flex', alignItems:'center', gap:5, fontSize:'12px'}}><Building2 size={14}/> {p.sucursal || p.Sede || p.Sucursal}</div>
+                      <div style={{color:'#fbbf24', fontSize:'13px', display:'flex', alignItems:'center', gap:4}}>
+                        <MapPin size={12}/> {p.region || p.Región}
+                      </div>
+                      <div style={{fontSize:'12px', color:'#888'}}>{p.sucursal || p.Sede || p.Sucursal}</div>
                     </td>
                     <td style={styles.td}>
-                      <div style={{fontSize:'13px'}}><Calendar size={14} style={{marginRight:5}}/> {p.fecha || p.Fecha || p.FECHA}</div>
+                      <div style={{fontSize:'13px', color:'#fff', display:'flex', alignItems:'center', gap:6}}>
+                        <Calendar size={14} color="#888"/> {p.fecha || p.Fecha || p.FECHA}
+                      </div>
                     </td>
                     <td style={styles.td}>
-                      <div style={{display:'flex', gap:'10px'}}>
+                      <div style={{display:'flex', gap:'8px'}}>
                         <select 
-                          style={styles.statusBadge(p.status)}
+                          style={styles.statusSelect(p.status)}
                           value={p.status || ""}
                           disabled={p.bloqueado}
                           onChange={(e) => {
-                            const val = e.target.value;
-                            setPersonal(prev => prev.map(item => item.id === p.id ? {...item, status: val} : item));
+                             const val = e.target.value;
+                             setPersonal(prev => prev.map(item => item.id === p.id ? {...item, status: val} : item));
                           }}
                         >
                           <option value="">SELECCIONAR</option>
                           {ESTADOS_POSIBLES.map(est => <option key={est} value={est}>{est}</option>)}
                         </select>
                         <button 
-                          onClick={() => !p.bloqueado && handleGuardar(p.id, p.status)}
-                          style={{backgroundColor: p.bloqueado ? 'transparent' : '#fbbf24', border:'none', padding:'10px', borderRadius:'8px', cursor: p.bloqueado ? 'default' : 'pointer'}}
+                          onClick={() => !p.bloqueado && handleSave(p.id, p.status)}
+                          style={{backgroundColor:'#fbbf24', border:'none', borderRadius:'6px', padding:'8px', cursor: p.bloqueado ? 'default' : 'pointer'}}
                         >
-                          {p.bloqueado ? <CheckCircle size={18} color="#fbbf24"/> : <Save size={18} color="#000"/>}
+                          {p.bloqueado ? <CheckCircle size={18} color="#000"/> : <Save size={18} color="#000"/>}
                         </button>
                       </div>
                     </td>
@@ -245,31 +254,25 @@ export default function App() {
             </table>
           </div>
         ) : (
+          /* PANEL ESTADÍSTICO SENCILLO */
           <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px'}}>
-             <div style={{backgroundColor:'#111', padding:'30px', borderRadius:'15px', border:'1px solid #333'}}>
-                <h3 style={{color:'#fbbf24', marginBottom:'20px'}}>Distribución por Estado</h3>
+             <div style={{backgroundColor:'#0a0a0a', padding:'25px', borderRadius:'15px', border:'1px solid #222'}}>
+                <h3 style={{color:'#fbbf24', marginTop:0}}>DISTRIBUCIÓN</h3>
                 {ESTADOS_POSIBLES.map(est => {
                   const cant = filtrados.filter(x => x.status === est).length;
                   const porc = filtrados.length > 0 ? (cant / filtrados.length * 100).toFixed(1) : 0;
                   return (
                     <div key={est} style={{marginBottom:'15px'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:'5px'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', marginBottom:4}}>
                         <span>{est}</span>
-                        <span>{cant} pers. ({porc}%)</span>
+                        <span>{cant} ({porc}%)</span>
                       </div>
-                      <div style={{height:'10px', backgroundColor:'#000', borderRadius:'5px'}}>
-                        <div style={{width:`${porc}%`, height:'100%', backgroundColor: est==='ACTIVO'?'#34d399':est==='SIN ACTIVIDAD'?'#ef4444':'#555', borderRadius:'5px'}}></div>
+                      <div style={{height:'8px', backgroundColor:'#111', borderRadius:'4px', overflow:'hidden'}}>
+                        <div style={{width:`${porc}%`, height:'100%', backgroundColor: est==='ACTIVO'?'#fbbf24':est==='SIN ACTIVIDAD'?'#ef4444':'#444'}}></div>
                       </div>
                     </div>
-                  )
+                  );
                 })}
-             </div>
-             <div style={{backgroundColor:'#111', padding:'30px', borderRadius:'15px', border:'1px solid #333', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center'}}>
-                <h3 style={{color:'#fbbf24'}}>Efectividad Operativa</h3>
-                <div style={{fontSize:'70px', fontWeight:'bold', color:'#34d399'}}>
-                  {filtrados.length > 0 ? ((kpis.activos / filtrados.length) * 100).toFixed(0) : 0}%
-                </div>
-                <p style={{color:'#555'}}>Basado en los filtros actuales</p>
              </div>
           </div>
         )}
