@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db } from './firebaseConfig';
 import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/firestore'; 
-import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet, Users, MapPin, Store } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const styles = {
@@ -20,6 +20,10 @@ const styles = {
     border: active ? 'none' : '1px solid #333',
     padding: '10px 25px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', transition: '0.3s'
   }),
+  // --- TARJETONES (KPIs) ---
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px', width: '100%' },
+  kpiCard: { backgroundColor: '#111', border: '1px solid #222', padding: '20px', borderRadius: '15px', display: 'flex', flexDirection: 'column', gap: '5px' },
+  
   filterBox: { backgroundColor: '#111', padding: '15px', borderRadius: '12px', marginBottom: '20px', display: 'flex', gap: '10px', border: '1px solid #222', flexWrap: 'wrap', alignItems: 'center' },
   input: { backgroundColor: '#000', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '14px', flex: '1', minWidth: '120px' },
   table: { width: '100%', borderCollapse: 'collapse' },
@@ -38,6 +42,7 @@ const styles = {
     padding: '8px', borderRadius: '8px', cursor: bloqueado ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
   }),
   btnOut: { backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
+  btnExcel: { backgroundColor: '#166534', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
   dashGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' },
   dashCard: { backgroundColor: '#111', border: '1px solid #333', borderRadius: '20px', padding: '30px' },
 };
@@ -68,7 +73,7 @@ export default function App() {
       const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setPersonal(docs);
     } catch (error) {
-      if (error.message.includes("quota")) alert("⚠️ Límite agotado.");
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -76,28 +81,15 @@ export default function App() {
 
   useEffect(() => { fetchDatos(); }, [fetchDatos]);
 
-  const fechasDisponibles = useMemo(() => {
-    const fechas = personal.map(p => p.fecha || p.Fecha || p.fechaCarga).filter(Boolean);
-    return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
-  }, [personal]);
-
-  const regionesDisponibles = useMemo(() => [...new Set(personal.map(p => p.region))].filter(Boolean).sort(), [personal]);
-  
-  const tiendasDisponibles = useMemo(() => {
-    const base = filtroRegion ? personal.filter(p => p.region === filtroRegion) : personal;
-    return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
-  }, [personal, filtroRegion]);
-
-  // --- LÓGICA DE FILTRADO OPTIMIZADA PARA LA COLUMNA O (mes) ---
+  // --- FILTRADO CORREGIDO ---
   const filtrados = useMemo(() => {
     return personal.filter(p => {
       const pNombre = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase();
+      // Leemos tanto 'fecha' (minúscula) como 'Fecha' (mayúscula)
       const pFechaStr = (p.fecha || p.Fecha || p.fechaCarga || "").toString();
-      // Tomamos el mes de la columna O y lo pasamos a Mayúsculas para comparar
       const pMesColumna = (p.mes || "").toString().toUpperCase();
 
       const matchSearch = pNombre.includes(busqueda.toLowerCase());
-      // Filtramos directamente comparando el texto del mes
       const matchMes = !filtroMes || pMesColumna === filtroMes;
       const matchFecha = !filtroFecha || pFechaStr === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
@@ -106,6 +98,17 @@ export default function App() {
       return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
     });
   }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
+
+  const fechasDisponibles = useMemo(() => {
+    const fechas = personal.map(p => p.fecha || p.Fecha || p.fechaCarga).filter(Boolean);
+    return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
+  }, [personal]);
+
+  const regionesDisponibles = useMemo(() => [...new Set(personal.map(p => p.region))].filter(Boolean).sort(), [personal]);
+  const tiendasDisponibles = useMemo(() => {
+    const base = filtroRegion ? personal.filter(p => p.region === filtroRegion) : personal;
+    return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
+  }, [personal, filtroRegion]);
 
   const statsPorEstado = useMemo(() => {
     const total = filtrados.length || 0;
@@ -119,16 +122,23 @@ export default function App() {
     });
   }, [filtrados]);
 
+  // --- FUNCIÓN EXPORTAR EXCEL ---
+  const exportarExcel = () => {
+    const data = filtrados.map(p => ({
+      ID: p.ID, Nombre: p.Nombre, Apellido: p.Apellido, Region: p.region, Sucursal: p.sucursal, Fecha: p.fecha || p.Fecha, Mes: p.mes, Status: p.status
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
+    XLSX.writeFile(wb, `Reporte_Asistencia_${new Date().toLocaleDateString()}.xlsx`);
+  };
+
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar guardado en Matriz?")) {
+    if (window.confirm("¿Confirmar en Matriz?")) {
       try {
-        await updateDoc(doc(db, "personal", id), { 
-          status: statusActual, 
-          bloqueado: true, 
-          fechaBloqueo: new Date().toISOString() 
-        });
+        await updateDoc(doc(db, "personal", id), { status: statusActual, bloqueado: true });
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
-      } catch (error) { alert("Error: " + error.message); }
+      } catch (e) { alert("Error al guardar"); }
     }
   };
 
@@ -138,10 +148,10 @@ export default function App() {
       <div style={styles.loginCard}>
         <Lock size={40} color="#fbbf24" style={{marginBottom:'20px'}}/>
         <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
-        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Denegado"); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Acceso Denegado"); }}>
           <input style={{...styles.input, width:'90%', marginBottom:'10px'}} placeholder="Usuario" onChange={e=>setUser(e.target.value)} />
           <input type="password" style={{...styles.input, width:'90%', marginBottom:'20px'}} placeholder="Contraseña" onChange={e=>setPass(e.target.value)} />
-          <button type="submit" style={{backgroundColor:'#fbbf24', color:'#000', width:'100%', padding:'12px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>ENTRAR AL PANEL</button>
+          <button type="submit" style={{backgroundColor:'#fbbf24', color:'#000', width:'100%', padding:'12px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>ENTRAR</button>
         </form>
       </div>
     </div>
@@ -155,36 +165,59 @@ export default function App() {
             <img src="/logo-canguro.png" alt="Logo" style={styles.logoImg} />
             <div>
               <h1 style={{margin:0, fontSize:'28px', fontStyle:'italic', fontWeight:'900'}}>MATRIZ ASISTENCIA <span style={{color:'#fbbf24'}}>PRO</span></h1>
-              <p style={{margin:0, color:'#555', fontSize:'14px', fontWeight:'bold'}}>SISTEMA DE AUDITORÍA NACIONAL 2026</p>
+              <p style={{margin:0, color:'#555', fontSize:'14px', fontWeight:'bold'}}>SISTEMA NACIONAL 2026</p>
             </div>
           </div>
           <div style={{display:'flex', gap:'10px'}}>
+            <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR EXCEL</button>
             <button onClick={fetchDatos} style={{...styles.btnOut, backgroundColor: '#333'}}>
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> REFRESCAR BDD
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> REFRESCAR
             </button>
             <button onClick={()=>setIsAuthenticated(false)} style={styles.btnOut}><LogOut size={18}/> SALIR</button>
           </div>
         </header>
 
+        {/* --- TARJETONES KPI --- */}
+        <div style={styles.kpiGrid}>
+          <div style={styles.kpiCard}>
+            <span style={{fontSize:'12px', color:'#555', fontWeight:'bold'}}>TOTAL COLABORADORES</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <Users size={24} color="#fbbf24"/> <span style={{fontSize:'24px', fontWeight:'bold'}}>{filtrados.length}</span>
+            </div>
+          </div>
+          <div style={styles.kpiCard}>
+            <span style={{fontSize:'12px', color:'#555', fontWeight:'bold'}}>REGIONES</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <MapPin size={24} color="#fbbf24"/> <span style={{fontSize:'24px', fontWeight:'bold'}}>{regionesDisponibles.length}</span>
+            </div>
+          </div>
+          <div style={styles.kpiCard}>
+            <span style={{fontSize:'12px', color:'#555', fontWeight:'bold'}}>TIENDAS ACTIVAS</span>
+            <div style={{display:'flex', alignItems:'center', gap:'10px'}}>
+              <Store size={24} color="#fbbf24"/> <span style={{fontSize:'24px', fontWeight:'bold'}}>{tiendasDisponibles.length}</span>
+            </div>
+          </div>
+        </div>
+
         <nav style={styles.navBar}>
           <button style={styles.navBtn(activeTab === "auditoria")} onClick={() => setActiveTab("auditoria")}>
-            <ClipboardList size={18}/> AUDITORÍA DE CAMPO
+            <ClipboardList size={18}/> AUDITORÍA
           </button>
           <button style={styles.navBtn(activeTab === "dashboard")} onClick={() => setActiveTab("dashboard")}>
-            <BarChart3 size={18}/> DASHBOARD REACTIVO
+            <BarChart3 size={18}/> DASHBOARD
           </button>
         </nav>
 
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre, ID o Sucursal..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
             {MESES_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
           <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
-            <option value="">FECHA ESPECÍFICA</option>
+            <option value="">FECHA</option>
             {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
           <select style={styles.input} value={filtroRegion} onChange={e=>{setFiltroRegion(e.target.value); setFiltroTienda("");}}>
@@ -202,7 +235,7 @@ export default function App() {
             <table style={styles.table}>
               <thead>
                 <tr style={{backgroundColor: '#1a1a1a'}}>
-                  <th style={styles.th}>COLABORADOR / SEDE</th>
+                  <th style={styles.th}>COLABORADOR</th>
                   <th style={styles.th}>FECHA</th>
                   <th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th>
                 </tr>
@@ -212,12 +245,10 @@ export default function App() {
                   <tr key={p.id}>
                     <td style={styles.td}>
                       <div style={{textTransform:'uppercase', fontWeight:'bold'}}>{p.Nombre} {p.Apellido}</div>
-                      <div style={{fontSize:'13px', color:'#fbbf24'}}>{p.sucursal} | {p.region}</div>
+                      <div style={{fontSize:'13px', color:'#fbbf24'}}>{p.sucursal}</div>
                     </td>
                     <td style={styles.td}>
-                      <div style={{fontSize:'14px', color:'#666', display:'flex', alignItems:'center', gap:'5px'}}>
-                        <Calendar size={14}/> {p.fecha || p.Fecha || '---'}
-                      </div>
+                      <div style={{fontSize:'14px', color:'#666'}}><Calendar size={14}/> {p.fecha || p.Fecha || '---'}</div>
                     </td>
                     <td style={styles.td}>
                       <div style={{display:'flex', gap:'8px', justifyContent:'center'}}>
@@ -240,7 +271,7 @@ export default function App() {
         ) : (
           <div style={styles.dashGrid}>
             <div style={styles.dashCard}>
-              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS POR ESTADO</h3>
+              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS</h3>
               {statsPorEstado.map(est => (
                 <div key={est.nombre} style={{marginBottom:'15px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px'}}>
@@ -248,14 +279,14 @@ export default function App() {
                     <span style={{color: est.color, fontWeight:'bold'}}>{est.cantidad} ({est.porcentaje}%)</span>
                   </div>
                   <div style={{height:'8px', backgroundColor:'#222', borderRadius:'4px', overflow:'hidden'}}>
-                    <div style={{width:`${est.porcentaje}%`, height:'100%', backgroundColor: est.color, transition:'width 1s'}}></div>
+                    <div style={{width:`${est.porcentaje}%`, height:'100%', backgroundColor: est.color}}></div>
                   </div>
                 </div>
               ))}
             </div>
             <div style={styles.dashCard}>
-              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>DISTRIBUCIÓN VISUAL</h4>
-              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
+               <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>BALANCE GENERAL</h4>
+               <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
                 {statsPorEstado.map(est => (
                   <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
                     <div style={{width:'30px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0'}}></div>
