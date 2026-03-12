@@ -4,16 +4,15 @@ import { collection, getDocs, query, orderBy, doc, updateDoc } from 'firebase/fi
 import { RefreshCw, Calendar, LogOut, Lock, Search, Save, CheckCircle, BarChart3, ClipboardList, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// --- ESTILOS MEJORADOS (Compatibles con Vercel) ---
 const styles = {
-  loginOverlay: { background: '#000', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
-  loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 1 },
+  loginOverlay: { backgroundImage: 'url("/BOT.png")', backgroundSize: 'cover', backgroundPosition: 'center', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: 'sans-serif', position: 'relative' },
+  loginDarken: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 1 },
   loginCard: { backgroundColor: '#111', padding: '40px', borderRadius: '20px', border: '1px solid #333', width: '350px', textAlign: 'center', zIndex: 2, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' },
   container: { backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '20px', fontFamily: 'sans-serif', width: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' },
   wrapper: { width: '100%', maxWidth: '1600px' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #333', paddingBottom: '20px', marginBottom: '20px' },
   logoSection: { display: 'flex', alignItems: 'center', gap: '20px' },
-  logoImg: { width: '120px', height: 'auto', objectFit: 'contain' },
+  logoImg: { width: '150px', height: '150px', objectFit: 'contain' },
   navBar: { display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '1px solid #222', paddingBottom: '15px' },
   navBtn: (active) => ({
     backgroundColor: active ? '#fbbf24' : 'transparent',
@@ -21,6 +20,8 @@ const styles = {
     border: active ? 'none' : '1px solid #333',
     padding: '10px 25px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', transition: '0.3s'
   }),
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', marginBottom: '25px' },
+  card: { backgroundColor: '#111', border: '1px solid #333', padding: '15px', borderRadius: '12px', textAlign: 'center' },
   filterBox: { backgroundColor: '#111', padding: '15px', borderRadius: '12px', marginBottom: '20px', display: 'flex', gap: '10px', border: '1px solid #222', flexWrap: 'wrap', alignItems: 'center' },
   input: { backgroundColor: '#000', border: '1px solid #444', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '14px', flex: '1', minWidth: '120px' },
   table: { width: '100%', borderCollapse: 'collapse' },
@@ -45,6 +46,7 @@ const styles = {
 };
 
 const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
+
 const MESES_NOM_A_NUM = {
   "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06",
   "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12"
@@ -58,7 +60,6 @@ export default function App() {
   const [personal, setPersonal] = useState([]);
   const [loading, setLoading] = useState(false);
   
-  // Filtros
   const [busqueda, setBusqueda] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
   const [filtroFecha, setFiltroFecha] = useState("");
@@ -75,7 +76,7 @@ export default function App() {
       const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setPersonal(docs);
     } catch (error) {
-      if (error.message.includes("quota")) alert("⚠️ Límite de Firebase agotado (Gratis).");
+      if (error.message.includes("quota")) alert("⚠️ Límite agotado.");
     } finally {
       setLoading(false);
     }
@@ -97,16 +98,14 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // --- LÓGICA DE FILTRADO PARA LA COLUMNA G ---
   const filtrados = useMemo(() => {
     return personal.filter(p => {
+      // EXTRACCIÓN DE MES MEJORADA PARA COLUMNA G (DD/MM/YYYY)
       const pFechaStr = (p.Fecha || p.fecha || p.fechaCarga || p.FECHA || "").toString();
-      
-      // Extrae el mes: 11/03/2026 -> [11, 03, 2026] -> Toma el índice 1 (03)
       const partes = pFechaStr.split('/');
       const mesDeFecha = partes.length >= 2 ? partes[1].padStart(2, '0') : "";
 
-      const matchSearch = `${p.Nombre} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
+      const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
       const matchMes = !filtroMes || mesDeFecha === MESES_NOM_A_NUM[filtroMes];
       const matchFecha = !filtroFecha || pFechaStr === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
@@ -131,7 +130,7 @@ export default function App() {
   }, [filtrados]);
 
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar registro de auditoría?")) {
+    if (window.confirm("¿Confirmar guardado?")) {
       try {
         await updateDoc(doc(db, "personal", id), { 
           status: statusActual, 
@@ -139,23 +138,23 @@ export default function App() {
           fechaBloqueo: new Date().toISOString() 
         });
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
-      } catch (error) { alert("Error al guardar: " + error.message); }
+      } catch (error) { alert("Error: " + error.message); }
     }
   };
 
   const exportarExcel = () => {
-    if (filtrados.length === 0) return alert("No hay datos para exportar");
+    if (filtrados.length === 0) return alert("No hay datos");
     const ws = XLSX.utils.json_to_sheet(filtrados.map(p => ({
-      NOMBRE: p.Nombre,
+      NOMBRE: `${p.Nombre} ${p.Apellido}`,
       ID: p.ID || '---',
       SUCURSAL: p.sucursal,
       REGION: p.region,
       ESTADO: p.status,
-      FECHA: p.Fecha || p.fecha || '---'
+      FECHA: p.Fecha || p.fecha || p.fechaCarga || '---'
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Auditoria");
-    XLSX.writeFile(wb, `Reporte_SRT_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `Reporte_Matriz_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   if (!isAuthenticated) return (
@@ -164,7 +163,7 @@ export default function App() {
       <div style={styles.loginCard}>
         <Lock size={40} color="#fbbf24" style={{marginBottom:'20px'}}/>
         <h2 style={{color:'#fff', marginBottom:'20px'}}>MATRIZ SRT 2026</h2>
-        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Acceso Denegado"); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (user === "ADMCanguro" && pass === "SRT2026") setIsAuthenticated(true); else alert("Denegado"); }}>
           <input style={{...styles.input, width:'90%', marginBottom:'10px'}} placeholder="Usuario" onChange={e=>setUser(e.target.value)} />
           <input type="password" style={{...styles.input, width:'90%', marginBottom:'20px'}} placeholder="Contraseña" onChange={e=>setPass(e.target.value)} />
           <button type="submit" style={{backgroundColor:'#fbbf24', color:'#000', width:'100%', padding:'12px', border:'none', borderRadius:'8px', fontWeight:'bold', cursor:'pointer'}}>ENTRAR AL PANEL</button>
@@ -180,13 +179,13 @@ export default function App() {
           <div style={styles.logoSection}>
             <img src="/logo-canguro.png" alt="Logo" style={styles.logoImg} />
             <div>
-              <h1 style={{margin:0, fontSize:'24px', fontWeight:'900'}}>MATRIZ <span style={{color:'#fbbf24'}}>PRO</span> 2026</h1>
-              <p style={{margin:0, color:'#555', fontSize:'12px'}}>SISTEMA DE AUDITORÍA DE ASISTENCIA</p>
+              <h1 style={{margin:0, fontSize:'28px', fontStyle:'italic', fontWeight:'900'}}>MATRIZ ASISTENCIA <span style={{color:'#fbbf24'}}>PRO</span></h1>
+              <p style={{margin:0, color:'#555', fontSize:'14px', fontWeight:'bold'}}>SISTEMA DE AUDITORÍA NACIONAL 2026</p>
             </div>
           </div>
           <div style={{display:'flex', gap:'10px'}}>
             <button onClick={fetchDatos} style={{...styles.btnOut, backgroundColor: '#333'}}>
-              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> ACTUALIZAR
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""}/> REFRESCAR BDD
             </button>
             <button onClick={()=>setIsAuthenticated(false)} style={styles.btnOut}><LogOut size={18}/> SALIR</button>
           </div>
@@ -194,16 +193,16 @@ export default function App() {
 
         <nav style={styles.navBar}>
           <button style={styles.navBtn(activeTab === "auditoria")} onClick={() => setActiveTab("auditoria")}>
-            <ClipboardList size={18}/> AUDITORÍA
+            <ClipboardList size={18}/> AUDITORÍA DE CAMPO
           </button>
           <button style={styles.navBtn(activeTab === "dashboard")} onClick={() => setActiveTab("dashboard")}>
-            <BarChart3 size={18}/> DASHBOARD
+            <BarChart3 size={18}/> DASHBOARD REACTIVO
           </button>
         </nav>
 
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar Colaborador..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
 
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
@@ -211,12 +210,22 @@ export default function App() {
             {Object.keys(MESES_NOM_A_NUM).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
+          <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
+            <option value="">FECHA ESPECÍFICA</option>
+            {fechasDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+
           <select style={styles.input} value={filtroRegion} onChange={e=>{setFiltroRegion(e.target.value); setFiltroTienda("");}}>
             <option value="">REGIÓN</option>
             {regionesDisponibles.map(r=><option key={r} value={r}>{r}</option>)}
           </select>
 
-          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXCEL</button>
+          <select style={styles.input} value={filtroTienda} onChange={e=>setFiltroTienda(e.target.value)}>
+            <option value="">SUCURSAL</option>
+            {tiendasDisponibles.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+
+          <button onClick={exportarExcel} style={styles.btnExcel}><FileSpreadsheet size={18}/> EXPORTAR</button>
         </div>
 
         {activeTab === "auditoria" ? (
@@ -225,20 +234,20 @@ export default function App() {
               <thead>
                 <tr style={{backgroundColor: '#1a1a1a'}}>
                   <th style={styles.th}>COLABORADOR / SEDE</th>
-                  <th style={styles.th}>FECHA COL. G</th>
-                  <th style={{...styles.th, textAlign:'center'}}>ACCIONES</th>
+                  <th style={styles.th}>FECHA</th>
+                  <th style={{...styles.th, textAlign:'center'}}>GESTIÓN</th>
                 </tr>
               </thead>
               <tbody>
                 {filtrados.map(p => (
                   <tr key={p.id}>
                     <td style={styles.td}>
-                      <div style={{fontWeight:'bold', color: '#fff'}}>{p.Nombre}</div>
-                      <div style={{fontSize:'12px', color:'#fbbf24'}}>{p.sucursal}</div>
+                      <div style={{textTransform:'uppercase', fontWeight:'bold'}}>{p.Nombre} {p.Apellido}</div>
+                      <div style={{fontSize:'13px', color:'#fbbf24'}}>{p.sucursal} | {p.region}</div>
                     </td>
                     <td style={styles.td}>
-                      <div style={{fontSize:'14px', color:'#888', display:'flex', alignItems:'center', gap:'5px'}}>
-                        <Calendar size={14}/> {p.Fecha || p.fecha || '---'}
+                      <div style={{fontSize:'14px', color:'#666', display:'flex', alignItems:'center', gap:'5px'}}>
+                        <Calendar size={14}/> {p.Fecha || p.fecha || p.fechaCarga || '---'}
                       </div>
                     </td>
                     <td style={styles.td}>
@@ -262,7 +271,7 @@ export default function App() {
         ) : (
           <div style={styles.dashGrid}>
             <div style={styles.dashCard}>
-              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>RESUMEN DE ESTADOS</h3>
+              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS DE CUMPLIMIENTO</h3>
               {statsPorEstado.map(est => (
                 <div key={est.nombre} style={{marginBottom:'15px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px'}}>
@@ -270,18 +279,18 @@ export default function App() {
                     <span style={{color: est.color, fontWeight:'bold'}}>{est.cantidad} ({est.porcentaje}%)</span>
                   </div>
                   <div style={{height:'8px', backgroundColor:'#222', borderRadius:'4px', overflow:'hidden'}}>
-                    <div style={{width:`${est.porcentaje}%`, height:'100%', backgroundColor: est.color, transition:'width 0.5s'}}></div>
+                    <div style={{width:`${est.porcentaje}%`, height:'100%', backgroundColor: est.color, transition:'width 1s'}}></div>
                   </div>
                 </div>
               ))}
             </div>
             <div style={styles.dashCard}>
-              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>PROMEDIO DE ASISTENCIA</h4>
-              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'180px'}}>
+              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>GRÁFICO DE ESTADO</h4>
+              <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
                 {statsPorEstado.map(est => (
                   <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
-                    <div style={{width:'25px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0'}}></div>
-                    <span style={{fontSize:'8px', color:'#555', marginTop:'8px'}}>{est.nombre.substring(0,6)}</span>
+                    <div style={{width:'30px', height:`${Math.max(est.porcentaje, 5)}%`, backgroundColor: est.color, borderRadius:'4px 4px 0 0'}}></div>
+                    <span style={{fontSize:'8px', color:'#444', marginTop:'8px'}}>{est.nombre.substring(0,5)}</span>
                   </div>
                 ))}
               </div>
