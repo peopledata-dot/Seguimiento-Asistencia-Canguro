@@ -47,6 +47,7 @@ const styles = {
 
 const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
 
+// Mapeo para normalizar la extracción de meses desde la fecha DD/MM/YYYY
 const MESES_NOM_A_NUM = {
   "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06",
   "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12"
@@ -98,15 +99,22 @@ export default function App() {
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
+  // LÓGICA DE FILTRADO MEJORADA (Extracción de mes automática)
   const filtrados = useMemo(() => {
     return personal.filter(p => {
-      // EXTRACCIÓN DE MES MEJORADA PARA COLUMNA G (DD/MM/YYYY)
+      // 1. Obtener fecha raw
       const pFechaStr = (p.Fecha || p.fecha || p.fechaCarga || p.FECHA || "").toString();
-      const partes = pFechaStr.split('/');
+      
+      // 2. Extraer mes de la fecha (asumiendo DD/MM/YYYY o DD-MM-YYYY)
+      const partes = pFechaStr.includes('/') ? pFechaStr.split('/') : pFechaStr.split('-');
       const mesDeFecha = partes.length >= 2 ? partes[1].padStart(2, '0') : "";
 
+      // 3. Evaluar coincidencias
       const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
+      
+      // El filtro por mes ahora busca el número de mes (03) extraído de la fecha
       const matchMes = !filtroMes || mesDeFecha === MESES_NOM_A_NUM[filtroMes];
+      
       const matchFecha = !filtroFecha || pFechaStr === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
