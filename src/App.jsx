@@ -38,13 +38,12 @@ const styles = {
     padding: '8px', borderRadius: '8px', cursor: bloqueado ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
   }),
   btnOut: { backgroundColor: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
-  btnExcel: { backgroundColor: '#166534', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' },
   dashGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' },
   dashCard: { backgroundColor: '#111', border: '1px solid #333', borderRadius: '20px', padding: '30px' },
 };
 
 const ESTADOS_POSIBLES = ["ACTIVO", "SIN ACTIVIDAD", "VACACIONES", "REPOSO", "EGRESO", "AUSENCIA INJUSTIFICADA"];
-const MESES_NOM_A_NUM = { "ENERO": "01", "FEBRERO": "02", "MARZO": "03", "ABRIL": "04", "MAYO": "05", "JUNIO": "06", "JULIO": "07", "AGOSTO": "08", "SEPTIEMBRE": "09", "OCTUBRE": "10", "NOVIEMBRE": "11", "DICIEMBRE": "12" };
+const MESES_LISTA = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -59,7 +58,6 @@ export default function App() {
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroRegion, setFiltroRegion] = useState("");
   const [filtroTienda, setFiltroTienda] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("");
 
   const fetchDatos = useCallback(async () => {
     if (!isAuthenticated) return;
@@ -78,35 +76,36 @@ export default function App() {
 
   useEffect(() => { fetchDatos(); }, [fetchDatos]);
 
-  // AJUSTE: Ahora busca prioritariamente 'fecha' en minúsculas
   const fechasDisponibles = useMemo(() => {
     const fechas = personal.map(p => p.fecha || p.Fecha || p.fechaCarga).filter(Boolean);
     return [...new Set(fechas)].sort((a, b) => b.localeCompare(a));
   }, [personal]);
 
   const regionesDisponibles = useMemo(() => [...new Set(personal.map(p => p.region))].filter(Boolean).sort(), [personal]);
+  
   const tiendasDisponibles = useMemo(() => {
     const base = filtroRegion ? personal.filter(p => p.region === filtroRegion) : personal;
     return [...new Set(base.map(p => p.sucursal))].filter(Boolean).sort();
   }, [personal, filtroRegion]);
 
-  // AJUSTE: Filtrado dinámico que acepta 'fecha' o 'Fecha'
+  // --- LÓGICA DE FILTRADO OPTIMIZADA PARA LA COLUMNA O (mes) ---
   const filtrados = useMemo(() => {
     return personal.filter(p => {
+      const pNombre = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase();
       const pFechaStr = (p.fecha || p.Fecha || p.fechaCarga || "").toString();
-      const partes = pFechaStr.split('/');
-      const mesDeFecha = partes.length >= 2 ? partes[1].padStart(2, '0') : "";
+      // Tomamos el mes de la columna O y lo pasamos a Mayúsculas para comparar
+      const pMesColumna = (p.mes || "").toString().toUpperCase();
 
-      const matchSearch = `${p.Nombre} ${p.Apellido} ${p.ID}`.toLowerCase().includes(busqueda.toLowerCase());
-      const matchMes = !filtroMes || mesDeFecha === MESES_NOM_A_NUM[filtroMes];
+      const matchSearch = pNombre.includes(busqueda.toLowerCase());
+      // Filtramos directamente comparando el texto del mes
+      const matchMes = !filtroMes || pMesColumna === filtroMes;
       const matchFecha = !filtroFecha || pFechaStr === filtroFecha;
       const matchRegion = !filtroRegion || p.region === filtroRegion;
       const matchTienda = !filtroTienda || p.sucursal === filtroTienda;
-      const matchStatus = !filtroStatus || p.status === filtroStatus;
 
-      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda && matchStatus;
+      return matchSearch && matchMes && matchFecha && matchRegion && matchTienda;
     });
-  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda, filtroStatus]);
+  }, [personal, busqueda, filtroMes, filtroFecha, filtroRegion, filtroTienda]);
 
   const statsPorEstado = useMemo(() => {
     const total = filtrados.length || 0;
@@ -121,9 +120,13 @@ export default function App() {
   }, [filtrados]);
 
   const handleGuardar = async (id, statusActual) => {
-    if (window.confirm("¿Confirmar guardado?")) {
+    if (window.confirm("¿Confirmar guardado en Matriz?")) {
       try {
-        await updateDoc(doc(db, "personal", id), { status: statusActual, bloqueado: true, fechaBloqueo: new Date().toISOString() });
+        await updateDoc(doc(db, "personal", id), { 
+          status: statusActual, 
+          bloqueado: true, 
+          fechaBloqueo: new Date().toISOString() 
+        });
         setPersonal(prev => prev.map(p => p.id === id ? { ...p, status: statusActual, bloqueado: true } : p));
       } catch (error) { alert("Error: " + error.message); }
     }
@@ -174,11 +177,11 @@ export default function App() {
 
         <div style={styles.filterBox}>
           <div style={{flex:2, display:'flex', alignItems:'center', backgroundColor:'#000', borderRadius:'8px', padding:'0 15px', border:'1px solid #222', minWidth:'220px'}}>
-            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
+            <Search size={18} color="#444"/><input style={{...styles.input, border:'none'}} placeholder="Buscar por Nombre, ID o Sucursal..." value={busqueda} onChange={e=>setBusqueda(e.target.value)} />
           </div>
           <select style={styles.input} value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}>
             <option value="">MES (TODOS)</option>
-            {Object.keys(MESES_NOM_A_NUM).map(m => <option key={m} value={m}>{m}</option>)}
+            {MESES_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
           <select style={styles.input} value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)}>
             <option value="">FECHA ESPECÍFICA</option>
@@ -237,7 +240,7 @@ export default function App() {
         ) : (
           <div style={styles.dashGrid}>
             <div style={styles.dashCard}>
-              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS</h3>
+              <h3 style={{color: '#fbbf24', marginBottom:'25px'}}>MÉTRICAS POR ESTADO</h3>
               {statsPorEstado.map(est => (
                 <div key={est.nombre} style={{marginBottom:'15px'}}>
                   <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px'}}>
@@ -251,7 +254,7 @@ export default function App() {
               ))}
             </div>
             <div style={styles.dashCard}>
-              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>GRÁFICO</h4>
+              <h4 style={{textAlign:'center', color:'#888', marginBottom:'30px'}}>DISTRIBUCIÓN VISUAL</h4>
               <div style={{display:'flex', alignItems:'flex-end', justifyContent:'space-around', height:'200px'}}>
                 {statsPorEstado.map(est => (
                   <div key={est.nombre+"bar"} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1}}>
